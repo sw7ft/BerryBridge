@@ -3,8 +3,13 @@
   "version": "0.1.0",
   "description": "Berry Bridge — Desktop Management of BerryCore Devices",
   "main": "./out/main/index.js",
-  "author": "BerryCore Community",
+  "author": "BerryCore Community <berrycore@users.noreply.github.com>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sw7ft/BerryBridge.git"
+  },
+  "homepage": "https://github.com/sw7ft/BerryBridge",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
@@ -42,6 +47,7 @@
   "build": {
     "appId": "com.berrycore.berrybridge",
     "productName": "Berry Bridge",
+    "npmRebuild": false,
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -93,6 +99,7 @@
     },
     "linux": {
       "icon": "build/icons",
+      "maintainer": "BerryCore Community <berrycore@users.noreply.github.com>",
       "target": [
         "AppImage",
         "deb"
