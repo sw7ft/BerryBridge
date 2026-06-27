@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "source": "https://github.com/sw7ft/BerryCore/tree/main/bar-files",
+  "apps": [
+    {
+      "id": "term49-all",
+      "name": "Term49",
+      "description": "BerryCore terminal with full permissions — SSH, misc tools, and device access.",
+      "version": "49",
+      "type": "bar",
+      "filename": "Term49-all-permissions.bar",
+      "author": "BerryCore"
+    },
+    {
+      "id": "term49-basic",
+      "name": "Term49 (no permissions)",
+      "description": "Term49 without elevated permissions — lighter install if you only need basic terminal.",
+      "version": "49",
+      "type": "bar",
+      "filename": "Term49-no-permissions.bar",
+      "author": "BerryCore"
+    },
+    {
+      "id": "term48",
+      "name": "Term48",
+      "description": "Earlier BerryCore terminal build for development use.",
+      "version": "48",
+      "type": "bar",
+      "filename": "Term48-dev-no-permissions.bar",
+      "author": "BerryCore"
+    },
+    {
+      "id": "bgshell10",
+      "name": "BGShell10",
+      "description": "Shell environment for BerryCore devices.",
+      "type": "bar",
+      "filename": "BGShell10.bar",
+      "author": "BerryCore"
+    },
+    {
+      "id": "term49-bridge-v212",
+      "name": "Term49 Bridge",
+      "description": "Exposes Android APIs to native BB10 apps (v2.1.2).",
+      "version": "2.1.2",
+      "type": "apk",
+      "filename": "Term49Bridge-v2.1.2-exposes-android-api.apk",
+      "author": "BerryCore"
+    },
+    {
+      "id": "term49-bridge-api",
+      "name": "Term49 Bridge API",
+      "description": "Android API bridge for Term49 integration.",
+      "type": "apk",
+      "filename": "Term49Bridge-API.apk",
+      "author": "BerryCore"
+    },
+    {
+      "id": "ham-modem",
+      "name": "Ham Modem Communication",
+      "description": "Amateur radio modem communication app for BerryCore.",
+      "type": "apk",
+      "filename": "Ham-Modem-Communication.apk",
+      "author": "BerryCore"
+    }
+  ]
+}

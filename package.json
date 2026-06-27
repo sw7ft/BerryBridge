@@ -1,0 +1,117 @@
+{
+  "name": "berrybridge",
+  "version": "0.1.0",
+  "description": "Berry Bridge — Desktop Management of BerryCore Devices",
+  "main": "./out/main/index.js",
+  "author": "BerryCore Community",
+  "license": "MIT",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "postinstall": "node scripts/fix-node-pty.js && node scripts/fetch-app-store-packages.js",
+    "fetch-app-store": "node scripts/fetch-app-store-packages.js",
+    "icons": "node scripts/prepare-build-icons.js",
+    "dist": "npm run icons && npm run build && electron-builder",
+    "dist:mac": "npm run icons && npm run build && electron-builder --mac",
+    "dist:linux": "npm run icons && npm run build && electron-builder --linux",
+    "dist:win": "npm run icons && npm run build && electron-builder --win"
+  },
+  "dependencies": {
+    "@electron-toolkit/utils": "^4.0.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "electron-legacy": "npm:electron@16.2.8",
+    "electron-store": "^8.2.0",
+    "node-pty": "^1.1.0",
+    "xterm": "^5.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^34.3.0",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^3.0.0",
+    "png-to-ico": "^3.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.8.2",
+    "vite": "^6.2.1"
+  },
+  "build": {
+    "appId": "com.berrycore.berrybridge",
+    "productName": "Berry Bridge",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "node_modules/electron-legacy/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/node-pty/prebuilds/**/spawn-helper",
+      "node_modules/node-pty/prebuilds/**/pty.node",
+      "node_modules/electron-legacy/dist/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/pb-apps.js",
+        "to": "pb-apps.js"
+      },
+      {
+        "from": "resources/bb10-manager-main.js",
+        "to": "bb10-manager-main.js"
+      },
+      {
+        "from": "resources/bb10-auto-install.js",
+        "to": "bb10-auto-install.js"
+      },
+      {
+        "from": "resources/smb.conf",
+        "to": "smb.conf"
+      },
+      {
+        "from": "resources/app-store",
+        "to": "app-store"
+      }
+    ],
+    "mac": {
+      "icon": "build/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64", "x64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["arm64", "x64"]
+        }
+      ],
+      "category": "public.app-category.developer-tools"
+    },
+    "linux": {
+      "icon": "build/icons",
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Development"
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    }
+  }
+}
