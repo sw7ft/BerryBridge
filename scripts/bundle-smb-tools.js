@@ -14,8 +14,7 @@ const { tmpdir } = require('os')
 const ROOT = join(__dirname, '..')
 const SAMBA_ROOT = join(ROOT, 'resources/samba')
 
-const SMBCLIENT_WIN_ZIP =
-  'https://allandynes.com/wp-content/uploads/2016/05/smbclient.zip'
+const SMBCLIENT_WIN_ZIP = join(ROOT, 'resources/vendor/smbclient-win.zip')
 
 function toCygwinPath(winPath) {
   const normalized = winPath.replace(/\\/g, '/')
@@ -245,7 +244,14 @@ function bundleWindows() {
   rmSync(tmpDir, { recursive: true, force: true })
   mkdirSync(tmpDir, { recursive: true })
 
-  return downloadFile(SMBCLIENT_WIN_ZIP, tmpZip).then(() => {
+  const prepare = existsSync(SMBCLIENT_WIN_ZIP)
+    ? Promise.resolve().then(() => cpSync(SMBCLIENT_WIN_ZIP, tmpZip, { force: true }))
+    : downloadFile(
+        'http://allandynes.com/wp-content/uploads/2016/05/smbclient.zip',
+        tmpZip
+      )
+
+  return prepare.then(() => {
     const header = readFileSync(tmpZip).subarray(0, 4)
     if (header[0] !== 0x50 || header[1] !== 0x4b) {
       throw new Error('Downloaded smbclient archive is invalid — expected a zip file')
