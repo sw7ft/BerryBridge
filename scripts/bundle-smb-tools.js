@@ -4,7 +4,7 @@
  * Used in CI before electron-builder so WiFi Storage works without manual Samba install.
  */
 const { execSync } = require('child_process')
-const { cpSync, rmSync, mkdirSync, existsSync, readdirSync, createWriteStream } = require('fs')
+const { cpSync, rmSync, mkdirSync, existsSync, readdirSync, createWriteStream, readFileSync } = require('fs')
 const { join, dirname, basename } = require('path')
 const { platform, arch } = require('os')
 const https = require('https')
@@ -15,7 +15,7 @@ const ROOT = join(__dirname, '..')
 const SAMBA_ROOT = join(ROOT, 'resources/samba')
 
 const SMBCLIENT_WIN_ZIP =
-  'http://allandynes.com/wp-content/uploads/2016/05/smbclient.zip'
+  'https://allandynes.com/wp-content/uploads/2016/05/smbclient.zip'
 
 function toCygwinPath(winPath) {
   const normalized = winPath.replace(/\\/g, '/')
@@ -246,8 +246,13 @@ function bundleWindows() {
   mkdirSync(tmpDir, { recursive: true })
 
   return downloadFile(SMBCLIENT_WIN_ZIP, tmpZip).then(() => {
+    const header = readFileSync(tmpZip).subarray(0, 4)
+    if (header[0] !== 0x50 || header[1] !== 0x4b) {
+      throw new Error('Downloaded smbclient archive is invalid — expected a zip file')
+    }
+
     execSync(
-      `"${bash}" -lc "unzip -o '${toCygwinPath(tmpZip)}' -d '${toCygwinPath(tmpDir)}' && chmod +x '${toCygwinPath(join(tmpDir, 'smbclient.exe'))}'"`,
+      `powershell -NoProfile -Command "Expand-Archive -Force -LiteralPath '${tmpZip.replace(/'/g, "''")}' -DestinationPath '${tmpDir.replace(/'/g, "''")}'"`,
       { stdio: 'inherit' }
     )
 
