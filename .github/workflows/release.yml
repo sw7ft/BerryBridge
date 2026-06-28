@@ -47,10 +47,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: msys2/setup-msys2@v2
+      - uses: cygwin/cygwin-install-action@v6
         with:
-          msystem: UCRT64
-          install: mingw-w64-ucrt-x86_64-samba
+          packages: bash unzip
+          install-dir: C:\cygwin64
 
       - uses: actions/setup-node@v4
         with:
@@ -62,7 +62,7 @@ jobs:
       - name: Bundle WiFi Storage tools
         env:
           BERRYBRIDGE_FORCE_SMB_BUNDLE: '1'
-        shell: msys2 {0}
+          BERRYBRIDGE_CYGWIN_ROOT: C:\cygwin64
         run: node scripts/bundle-smb-tools.js
 
       - run: npm run build

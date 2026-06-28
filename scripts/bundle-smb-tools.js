@@ -4,12 +4,78 @@
  * Used in CI before electron-builder so WiFi Storage works without manual Samba install.
  */
 const { execSync } = require('child_process')
-const { cpSync, rmSync, mkdirSync, existsSync, readdirSync } = require('fs')
-const { join, dirname, basename, resolve } = require('path')
+const { cpSync, rmSync, mkdirSync, existsSync, readdirSync, createWriteStream } = require('fs')
+const { join, dirname, basename } = require('path')
 const { platform, arch } = require('os')
+const https = require('https')
+const http = require('http')
+const { tmpdir } = require('os')
 
 const ROOT = join(__dirname, '..')
 const SAMBA_ROOT = join(ROOT, 'resources/samba')
+
+const SMBCLIENT_WIN_ZIP =
+  'http://allandynes.com/wp-content/uploads/2016/05/smbclient.zip'
+
+function toCygwinPath(winPath) {
+  const normalized = winPath.replace(/\\/g, '/')
+  const m = normalized.match(/^([A-Za-z]):\/*(.*)$/)
+  if (!m) return normalized
+  return `/cygdrive/${m[1].toLowerCase()}/${m[2]}`
+}
+
+function downloadFile(url, dest) {
+  return new Promise((resolve, reject) => {
+    const lib = url.startsWith('https') ? https : http
+    const file = createWriteStream(dest)
+    lib
+      .get(url, { headers: { 'User-Agent': 'BerryBridge' } }, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          file.close()
+          rmSync(dest, { force: true })
+          downloadFile(res.headers.location, dest).then(resolve).catch(reject)
+          return
+        }
+        if (res.statusCode !== 200) {
+          file.close()
+          rmSync(dest, { force: true })
+          reject(new Error(`HTTP ${res.statusCode} downloading ${url}`))
+          return
+        }
+        res.pipe(file)
+        file.on('finish', () => file.close(() => resolve()))
+      })
+      .on('error', reject)
+  })
+}
+
+function copyWindowsDepsWithLdd(bash, clientPath, dest) {
+  const cygPath = toCygwinPath(clientPath)
+  const lddOut = execSync(`"${bash}" -lc "ldd '${cygPath}'"`, { encoding: 'utf8' })
+  const copied = new Set([basename(clientPath)])
+
+  for (const line of lddOut.split('\n')) {
+    const m = line.match(/=>\s(\S+)/)
+    if (!m) continue
+    let lib = m[1]
+    if (lib === 'not' || lib.includes('not')) continue
+
+    if (lib.startsWith('/cygdrive/')) {
+      lib = lib.replace(/^\/cygdrive\/([a-z])\/(.*)$/i, (_, drive, rest) => {
+        return `${drive.toUpperCase()}:\\${rest.replace(/\//g, '\\')}`
+      })
+    } else if (lib.startsWith('/usr/') || lib.startsWith('/bin/')) {
+      const cygwinRoot = process.env.BERRYBRIDGE_CYGWIN_ROOT || 'C:\\cygwin64'
+      lib = join(cygwinRoot, lib.replace(/^\//, '').replace(/\//g, '\\'))
+    }
+
+    if (!existsSync(lib)) continue
+    const name = basename(lib)
+    if (copied.has(name)) continue
+    copied.add(name)
+    cpSync(lib, join(dest, name), { force: true })
+  }
+}
 
 function platformKey() {
   if (platform() === 'darwin') return `darwin-${arch()}`
@@ -136,87 +202,97 @@ function bundleLinux() {
 }
 
 function bundleWindows() {
-  const candidates = [
-    process.env.MSYSTEM_PREFIX ? join(process.env.MSYSTEM_PREFIX, 'bin/smbclient.exe') : '',
-    'C:\\msys64\\ucrt64\\bin\\smbclient.exe',
-    'C:\\msys64\\mingw64\\bin\\smbclient.exe'
-  ].filter(Boolean)
-
-  const client = candidates.find((p) => existsSync(p))
-  if (!client) {
-    throw new Error(
-      'smbclient.exe not found — install MSYS2 UCRT64 samba (mingw-w64-ucrt-x86_64-samba)'
-    )
-  }
-
-  const binDir = dirname(client)
   const dest = outDir()
   rmSync(dest, { recursive: true, force: true })
   mkdirSync(dest, { recursive: true })
 
-  copyBinary(client, dest)
+  const systemCandidates = [
+    process.env.MSYSTEM_PREFIX ? join(process.env.MSYSTEM_PREFIX, 'bin/smbclient.exe') : '',
+    process.env.BERRYBRIDGE_CYGWIN_ROOT
+      ? join(process.env.BERRYBRIDGE_CYGWIN_ROOT, 'usr/bin/smbclient.exe')
+      : '',
+    'C:\\cygwin64\\usr\\bin\\smbclient.exe',
+    'C:\\msys64\\ucrt64\\bin\\smbclient.exe',
+    'C:\\msys64\\mingw64\\bin\\smbclient.exe'
+  ].filter(Boolean)
 
-  let lddOut = ''
-  try {
-    const bash = existsSync('C:\\msys64\\usr\\bin\\bash.exe')
-      ? 'C:\\msys64\\usr\\bin\\bash.exe'
-      : 'bash'
-    const msysPath = client.replace(/\\/g, '/').replace(/^C:/, '/c')
-    lddOut = execSync(`"${bash}" -lc "ldd '${msysPath}'"`, { encoding: 'utf8' })
-  } catch {
-    /* fall back to copying common deps */
+  const bashCandidates = [
+    process.env.BERRYBRIDGE_CYGWIN_ROOT
+      ? join(process.env.BERRYBRIDGE_CYGWIN_ROOT, 'bin/bash.exe')
+      : '',
+    'C:\\cygwin64\\bin\\bash.exe',
+    'C:\\msys64\\usr\\bin\\bash.exe'
+  ].filter(Boolean)
+
+  const systemClient = systemCandidates.find((p) => existsSync(p))
+  const bash = bashCandidates.find((p) => existsSync(p))
+
+  if (systemClient && bash) {
+    copyBinary(systemClient, dest)
+    copyWindowsDepsWithLdd(bash, join(dest, 'smbclient.exe'), dest)
+    console.log(`berrybridge: bundled Windows smbclient from ${systemClient} → ${dest}`)
+    return Promise.resolve()
   }
 
-  const copied = new Set([basename(client)])
-
-  if (lddOut) {
-    for (const line of lddOut.split('\n')) {
-      const m = line.match(/=>\s(\S+)/)
-      if (!m) continue
-      let lib = m[1]
-      if (lib.startsWith('/')) {
-        lib = lib
-          .replace(/^\/ucrt64\//, 'C:\\msys64\\ucrt64\\')
-          .replace(/^\/mingw64\//, 'C:\\msys64\\mingw64\\')
-          .replace(/\//g, '\\')
-      }
-      if (!existsSync(lib)) continue
-      const name = basename(lib)
-      if (copied.has(name)) continue
-      copied.add(name)
-      cpSync(lib, join(dest, name), { force: true })
-    }
-  } else {
-    for (const file of readdirSync(binDir)) {
-      if (!file.endsWith('.dll')) continue
-      if (/^(smb|libsmb|libwbclient|libtdb|libtevent|libtalloc|libldb|libnetapi|libreplace|libmsrpc|libcli|libndr|libdcerpc|libgensec|libutil|libcrypto|libssl|libz|libpopt|libjansson|libarchive|libgnutls|libhogweed|libnettle|libgmp|libunistring|libiconv|libintl|libreadline|libncurses|libwinpthread|libgcc|libstdc|zlib)/i.test(file)) {
-        cpSync(join(binDir, file), join(dest, file), { force: true })
-      }
-    }
+  if (!bash) {
+    throw new Error(
+      'Cygwin is required to bundle WiFi Storage tools on Windows (install Cygwin or run CI release build)'
+    )
   }
 
-  console.log(`berrybridge: bundled Windows smbclient → ${dest}`)
+  const tmpZip = join(tmpdir(), 'berrybridge-smbclient.zip')
+  const tmpDir = join(tmpdir(), 'berrybridge-smb-staging')
+  rmSync(tmpDir, { recursive: true, force: true })
+  mkdirSync(tmpDir, { recursive: true })
+
+  return downloadFile(SMBCLIENT_WIN_ZIP, tmpZip).then(() => {
+    execSync(
+      `"${bash}" -lc "unzip -o '${toCygwinPath(tmpZip)}' -d '${toCygwinPath(tmpDir)}' && chmod +x '${toCygwinPath(join(tmpDir, 'smbclient.exe'))}'"`,
+      { stdio: 'inherit' }
+    )
+
+    const staged = join(tmpDir, 'smbclient.exe')
+    if (!existsSync(staged)) {
+      throw new Error('Downloaded smbclient.zip did not contain smbclient.exe')
+    }
+
+    cpSync(staged, join(dest, 'smbclient.exe'), { force: true })
+    copyWindowsDepsWithLdd(bash, join(dest, 'smbclient.exe'), dest)
+    console.log(`berrybridge: bundled Windows smbclient (Cygwin build) → ${dest}`)
+  })
 }
 
 function main() {
   const dest = join(outDir(), smbclientName())
   if (existsSync(dest) && process.env.BERRYBRIDGE_FORCE_SMB_BUNDLE !== '1') {
     console.log(`berrybridge: WiFi Storage tools already bundled at ${dest}`)
-    return
+    return Promise.resolve()
   }
 
-  if (platform() === 'darwin') bundleDarwin()
-  else if (platform() === 'win32') bundleWindows()
-  else if (platform() === 'linux') bundleLinux()
-  else throw new Error(`Unsupported platform: ${platform()}`)
-
-  if (!existsSync(dest)) {
-    throw new Error(`Bundle failed — ${dest} was not created`)
+  if (platform() === 'darwin') {
+    bundleDarwin()
+    return Promise.resolve()
   }
+  if (platform() === 'win32') return bundleWindows()
+  if (platform() === 'linux') {
+    bundleLinux()
+    return Promise.resolve()
+  }
+  return Promise.reject(new Error(`Unsupported platform: ${platform()}`))
 }
 
 try {
   main()
+    .then(() => {
+      const dest = join(outDir(), smbclientName())
+      if (!existsSync(dest)) {
+        throw new Error(`Bundle failed — ${dest} was not created`)
+      }
+    })
+    .catch((err) => {
+      console.error(`berrybridge: ${err.message}`)
+      process.exit(1)
+    })
 } catch (err) {
   console.error(`berrybridge: ${err.message}`)
   process.exit(1)
