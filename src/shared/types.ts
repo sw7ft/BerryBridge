@@ -196,19 +196,51 @@ export interface AppStoreEntry {
   version?: string
   type: 'bar' | 'apk'
   filename: string
-  source: 'builtin' | 'custom'
+  source: 'builtin' | 'custom' | 'repo'
   author?: string
+  /** GitHub repo id when source is repo. */
+  repoId?: string
+  /** Path within the GitHub repo. */
+  githubPath?: string
+  downloadUrl?: string
+}
+
+export interface AppStoreRepo {
+  id: string
+  owner: string
+  repo: string
+  branch: string
+  path: string
+  label: string
+  htmlUrl: string
+  addedAt: string
+  lastSyncedAt?: string
+}
+
+export interface AppStoreRepoManifest {
+  repoId: string
+  branch: string
+  packages: {
+    path: string
+    name: string
+    type: 'bar' | 'apk'
+    size: number
+    downloadUrl: string
+  }[]
+  syncedAt: string
 }
 
 export interface AppStoreCatalogItem extends AppStoreEntry {
   packagePath: string
   /** False when the .bar/.apk file is not on disk (run npm run fetch-app-store). */
   packageAvailable: boolean
+  repoLabel?: string
 }
 
 export interface AppStoreCatalog {
   version: number
   apps: AppStoreCatalogItem[]
+  repos: AppStoreRepo[]
 }
 
 export type AppSection =

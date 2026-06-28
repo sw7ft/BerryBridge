@@ -423,6 +423,86 @@ a {
 }
 
 /* App Store */
+.store-type-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.store-type-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.store-type-tab:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.store-type-tab.active {
+  color: var(--text);
+  border-color: var(--bb-blue);
+  background: color-mix(in srgb, var(--bb-blue) 8%, var(--surface));
+}
+
+.store-type-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--surface-elevated);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.store-type-tab.active .store-type-count {
+  background: color-mix(in srgb, var(--bb-blue) 15%, var(--surface));
+  color: var(--text);
+}
+
+.store-add-repo {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.store-repo-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.store-repo-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.store-repo-title a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.store-repo-title a:hover {
+  color: var(--bb-blue);
+  text-decoration: underline;
+}
+
 .store-list {
   list-style: none;
   margin: 0;

@@ -229,6 +229,9 @@ function registerIpc(): void {
   ipcMain.handle('store:list', () => appStore.listCatalog())
   ipcMain.handle('store:import', () => appStore.importPackage())
   ipcMain.handle('store:remove', (_e, id: string) => appStore.removeCustomPackage(id))
+  ipcMain.handle('store:addRepo', (_e, input: string) => appStore.addGitHubRepo(input))
+  ipcMain.handle('store:refreshRepo', (_e, repoId: string) => appStore.refreshGitHubRepo(repoId))
+  ipcMain.handle('store:removeRepo', (_e, repoId: string) => appStore.removeGitHubRepo(repoId))
   ipcMain.handle('store:install', async (_e, deviceId: string, entryId: string) => {
     const device = store.getDevice(deviceId)
     if (!device) return { ok: false, message: 'Device not found' }

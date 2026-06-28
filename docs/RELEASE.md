@@ -1,4 +1,10 @@
-# Berry Bridge — first release checklist
+# Berry Bridge — release checklist
+
+## v0.1.6 — App Store GitHub repos
+
+Add your own public GitHub repos to the App Store. Berry Bridge scans for **`.bar`** and **`.apk`** files, with separate tabs for each type. Packages download from GitHub on install and are cached locally.
+
+Tag **`v0.1.6`** to trigger [`.github/workflows/release.yml`](../.github/workflows/release.yml).
 
 ## v0.1.5 — WiFi Storage works out of the box
 

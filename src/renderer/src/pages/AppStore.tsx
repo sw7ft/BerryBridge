@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import type { AppStoreCatalogItem, DeviceProfile } from '@shared/types'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { AppStoreCatalogItem, AppStoreRepo, DeviceProfile } from '@shared/types'
 import { PageHeader } from '../components/PageHeader'
 import { Panel } from '../components/Panel'
 import { readStoredActiveDeviceId, storeActiveDeviceId } from '../utils/active-device'
@@ -8,19 +8,28 @@ interface Props {
   devices: DeviceProfile[]
 }
 
+type PackageFilter = 'bar' | 'apk'
+
 export function AppStorePage({ devices }: Props) {
   const [catalog, setCatalog] = useState<AppStoreCatalogItem[]>([])
+  const [repos, setRepos] = useState<AppStoreRepo[]>([])
+  const [pkgFilter, setPkgFilter] = useState<PackageFilter>('bar')
   const [deviceId, setDeviceId] = useState('')
   const [message, setMessage] = useState('')
   const [messageOk, setMessageOk] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
+  const [repoInput, setRepoInput] = useState('')
+  const [addingRepo, setAddingRepo] = useState(false)
+  const [refreshingRepoId, setRefreshingRepoId] = useState<string | null>(null)
+  const [showAddRepo, setShowAddRepo] = useState(false)
 
   const device = devices.find((d) => d.id === deviceId)
 
   const refresh = useCallback(async () => {
     const list = await window.berrybridge.store.list()
     setCatalog(list.apps)
+    setRepos(list.repos)
   }, [])
 
   useEffect(() => {
@@ -36,26 +45,41 @@ export function AppStorePage({ devices }: Props) {
     setDeviceId(readStoredActiveDeviceId(devices))
   }, [devices, deviceId])
 
+  const filtered = useMemo(
+    () => catalog.filter((a) => a.type === pkgFilter),
+    [catalog, pkgFilter]
+  )
+
+  const builtin = filtered.filter((a) => a.source === 'builtin')
+  const repoApps = filtered.filter((a) => a.source === 'repo')
+  const custom = filtered.filter((a) => a.source === 'custom')
+
+  const reposWithApps = useMemo(() => {
+    return repos.map((repo) => ({
+      repo,
+      apps: repoApps.filter((a) => a.repoId === repo.id)
+    }))
+  }, [repos, repoApps])
+
+  const barCount = catalog.filter((a) => a.type === 'bar').length
+  const apkCount = catalog.filter((a) => a.type === 'apk').length
+
   const install = async (entry: AppStoreCatalogItem) => {
     if (!device) return
-    if (!entry.packageAvailable) {
-      setMessageOk(false)
-      setMessage(
-        `Package file missing: ${entry.filename}. Run "npm run fetch-app-store" in the Berry Bridge folder, then restart the app.`
-      )
-      return
-    }
     setBusyId(entry.id)
     setMessageOk(false)
     setMessage(
-      entry.type === 'apk'
-        ? `Installing ${entry.name}… Uploading APK over WiFi Storage.`
-        : `Installing ${entry.name}… A progress window will open. This can take 1–3 minutes.`
+      entry.source === 'repo' && !entry.packageAvailable
+        ? `Downloading ${entry.name} from GitHub…`
+        : entry.type === 'apk'
+          ? `Installing ${entry.name}… Uploading APK over WiFi Storage.`
+          : `Installing ${entry.name}… A progress window will open. This can take 1–3 minutes.`
     )
     try {
       const result = await window.berrybridge.store.install(device.id, entry.id)
       setMessageOk(result.ok)
       setMessage(result.message)
+      if (result.ok) await refresh()
     } catch (e) {
       setMessageOk(false)
       setMessage(String(e))
@@ -73,12 +97,59 @@ export function AppStorePage({ devices }: Props) {
         await refresh()
         setMessageOk(true)
         setMessage(`Added ${added.name} to your app store.`)
+        setPkgFilter(added.type)
       }
     } catch (e) {
       setMessageOk(false)
       setMessage(String(e))
     } finally {
       setImporting(false)
+    }
+  }
+
+  const addRepo = async () => {
+    const input = repoInput.trim()
+    if (!input) return
+    setAddingRepo(true)
+    setMessage('')
+    try {
+      const repo = await window.berrybridge.store.addRepo(input)
+      await refresh()
+      setMessageOk(true)
+      setMessage(`Added ${repo.label} — scanned for .bar and .apk files.`)
+      setRepoInput('')
+      setShowAddRepo(false)
+    } catch (e) {
+      setMessageOk(false)
+      setMessage(String(e))
+    } finally {
+      setAddingRepo(false)
+    }
+  }
+
+  const refreshRepo = async (repoId: string) => {
+    setRefreshingRepoId(repoId)
+    setMessage('')
+    try {
+      const repo = await window.berrybridge.store.refreshRepo(repoId)
+      await refresh()
+      setMessageOk(true)
+      setMessage(`Refreshed ${repo.label}.`)
+    } catch (e) {
+      setMessageOk(false)
+      setMessage(String(e))
+    } finally {
+      setRefreshingRepoId(null)
+    }
+  }
+
+  const removeRepo = async (repoId: string) => {
+    setMessage('')
+    const ok = await window.berrybridge.store.removeRepo(repoId)
+    if (ok) {
+      await refresh()
+      setMessageOk(true)
+      setMessage('Removed GitHub repo from your app store.')
     }
   }
 
@@ -92,9 +163,9 @@ export function AppStorePage({ devices }: Props) {
     }
   }
 
-  const builtin = catalog.filter((a) => a.source === 'builtin')
-  const custom = catalog.filter((a) => a.source === 'custom')
-  const missingBuiltin = builtin.filter((a) => !a.packageAvailable)
+  const missingBuiltin = catalog
+    .filter((a) => a.source === 'builtin' && a.type === pkgFilter)
+    .filter((a) => !a.packageAvailable)
 
   const installDisabledFor = (entry: AppStoreCatalogItem) => {
     if (!device) return true
@@ -106,7 +177,11 @@ export function AppStorePage({ devices }: Props) {
     <>
       <PageHeader
         title="App Store"
-        subtitle="Install bundled and custom .bar / .apk packages to your device over Development Mode."
+        subtitle={
+          pkgFilter === 'bar'
+            ? 'Install .bar apps over Development Mode.'
+            : 'Install .apk apps over WiFi Storage.'
+        }
         actions={
           <div className="data-toolbar">
             <select
@@ -127,49 +202,104 @@ export function AppStorePage({ devices }: Props) {
                 ))
               )}
             </select>
-            <button className="btn btn-secondary btn-sm" disabled={importing} onClick={addPackage}>
-              {importing ? 'Adding…' : 'Add package'}
+            <button
+              className="btn btn-secondary btn-sm"
+              disabled={importing}
+              onClick={addPackage}
+            >
+              {importing ? 'Adding…' : 'Add local file'}
+            </button>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => setShowAddRepo((v) => !v)}
+            >
+              {showAddRepo ? 'Cancel' : 'Add GitHub repo'}
             </button>
           </div>
         }
       />
 
+      <div className="store-type-tabs" role="tablist" aria-label="Package type">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={pkgFilter === 'bar'}
+          className={`store-type-tab${pkgFilter === 'bar' ? ' active' : ''}`}
+          onClick={() => setPkgFilter('bar')}
+        >
+          .bar apps
+          <span className="store-type-count">{barCount}</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={pkgFilter === 'apk'}
+          className={`store-type-tab${pkgFilter === 'apk' ? ' active' : ''}`}
+          onClick={() => setPkgFilter('apk')}
+        >
+          .apk apps
+          <span className="store-type-count">{apkCount}</span>
+        </button>
+      </div>
+
       {message && (
         <div className={`alert ${messageOk ? 'alert-ok' : 'alert-warn'}`}>{message}</div>
       )}
 
+      {showAddRepo && (
+        <Panel title="Add GitHub repo">
+          <p className="panel-desc">
+            Point Berry Bridge at a public GitHub repo (or subfolder). It scans for{' '}
+            <strong>.bar</strong> and <strong>.apk</strong> files — switch tabs above to install
+            each type.
+          </p>
+          <div className="store-add-repo">
+            <input
+              type="text"
+              className="store-repo-input"
+              placeholder="owner/repo or https://github.com/owner/repo/tree/main/bar-files"
+              value={repoInput}
+              onChange={(e) => setRepoInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && addRepo()}
+            />
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              disabled={addingRepo || !repoInput.trim()}
+              onClick={addRepo}
+            >
+              {addingRepo ? 'Scanning…' : 'Add repo'}
+            </button>
+          </div>
+          <p className="field-hint" style={{ marginTop: 10 }}>
+            Example:{' '}
+            <code className="code-inline">sw7ft/BerryCore/tree/main/bar-files</code>
+          </p>
+        </Panel>
+      )}
+
+      {pkgFilter === 'bar' && !device?.devModePassword && devices.length > 0 && (
+        <div className="alert alert-warn">
+          <strong>.bar files</strong> need your Development Mode password on the device profile.
+        </div>
+      )}
+
+      {pkgFilter === 'apk' && devices.length > 0 && !device?.smbPassword && (
+        <div className="alert alert-warn">
+          <strong>.apk files</strong> install through WiFi Storage — add your WiFi Storage password
+          on the device profile.
+        </div>
+      )}
+
       {missingBuiltin.length > 0 && (
         <div className="alert alert-warn">
-          <strong>{missingBuiltin.length} bundled package(s) not downloaded yet.</strong> Run{' '}
-          <code>npm run fetch-app-store</code> in the Berry Bridge project folder (or re-run{' '}
-          <code>npm install</code>), then restart the app. Install buttons are disabled until files
-          are present.
+          <strong>{missingBuiltin.length} bundled package(s) not downloaded yet.</strong> Re-run{' '}
+          <code>npm install</code> or restart the shipped app — bundled files are included in
+          releases.
         </div>
       )}
 
-      {!device?.devModePassword && devices.length > 0 && catalog.some((a) => a.type === 'bar') && (
-        <div className="alert alert-warn">
-          <strong>.bar files</strong> need your Development Mode password on the device profile
-          (Devices → Edit). This is separate from the WiFi/storage password.
-        </div>
-      )}
-
-      {catalog.some((a) => a.type === 'apk') && devices.length > 0 && !device?.smbPassword && (
-        <div className="alert alert-warn">
-          <strong>.apk files</strong> install through WiFi Storage (not Development Mode). Add your{' '}
-          <strong>WiFi Storage</strong> password on the device profile — Settings → Storage and
-          Access on BB10.
-        </div>
-      )}
-
-      {catalog.some((a) => a.type === 'apk') && (
-        <div className="alert alert-ok" style={{ opacity: 0.95 }}>
-          Android <strong>.apk</strong> packages upload to Documents on your phone, then install via
-          the Android installer (you may need to tap Install on the device).
-        </div>
-      )}
-
-      <Panel title={`BerryCore apps · ${builtin.length}`}>
+      <Panel title={`BerryCore · ${builtin.length}`}>
         <p className="panel-desc">
           Default packages from{' '}
           <a
@@ -183,11 +313,10 @@ export function AppStorePage({ devices }: Props) {
           >
             BerryCore bar-files
           </a>
-          . One-click install — <strong>.bar</strong> over Development Mode, <strong>.apk</strong>{' '}
-          over WiFi Storage.
+          .
         </p>
         {builtin.length === 0 ? (
-          <div className="empty">No bundled apps yet — defaults will appear here when added.</div>
+          <div className="empty">No bundled {pkgFilter} packages in this tab.</div>
         ) : (
           <ul className="store-list">
             {builtin.map((entry) => (
@@ -203,12 +332,76 @@ export function AppStorePage({ devices }: Props) {
         )}
       </Panel>
 
-      <Panel title={`Your app store · ${custom.length}`}>
-        <p className="panel-desc">
-          Upload your own packages — they are stored locally and can be installed to any saved device.
-        </p>
+      {reposWithApps.map(({ repo, apps }) => (
+        <Panel
+          key={repo.id}
+          title={
+            <span className="store-repo-title">
+              <a
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault()
+                  window.berrybridge.shell.openExternal(repo.htmlUrl)
+                }}
+              >
+                {repo.label}
+              </a>
+              <span className="store-row-meta"> · {apps.length} in this tab</span>
+            </span>
+          }
+        >
+          <div className="store-repo-actions">
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              disabled={refreshingRepoId === repo.id}
+              onClick={() => refreshRepo(repo.id)}
+            >
+              {refreshingRepoId === repo.id ? 'Refreshing…' : 'Refresh from GitHub'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => removeRepo(repo.id)}
+            >
+              Remove repo
+            </button>
+          </div>
+          {apps.length === 0 ? (
+            <div className="empty">
+              No .{pkgFilter} files in this repo — try the other tab or refresh.
+            </div>
+          ) : (
+            <ul className="store-list">
+              {apps.map((entry) => (
+                <StoreRow
+                  key={entry.id}
+                  entry={entry}
+                  busy={busyId === entry.id}
+                  disabled={installDisabledFor(entry)}
+                  onInstall={() => install(entry)}
+                  showCacheHint
+                />
+              ))}
+            </ul>
+          )}
+        </Panel>
+      ))}
+
+      {repos.length === 0 && (
+        <Panel title="GitHub repos">
+          <p className="panel-desc">
+            Add a public repo that hosts .bar or .apk files. Packages download from GitHub when you
+            tap Install.
+          </p>
+          <div className="empty">No GitHub repos yet — click Add GitHub repo above.</div>
+        </Panel>
+      )}
+
+      <Panel title={`Local packages · ${custom.length}`}>
+        <p className="panel-desc">Files imported from your computer — stored locally on this Mac/PC.</p>
         {custom.length === 0 ? (
-          <div className="empty">Use Add package to import a .bar or .apk file.</div>
+          <div className="empty">Use Add local file to import a .bar or .apk from disk.</div>
         ) : (
           <ul className="store-list">
             {custom.map((entry) => (
@@ -233,15 +426,17 @@ function StoreRow({
   busy,
   disabled,
   onInstall,
-  onRemove
+  onRemove,
+  showCacheHint
 }: {
   entry: AppStoreCatalogItem
   busy: boolean
   disabled: boolean
   onInstall: () => void
   onRemove?: () => void
+  showCacheHint?: boolean
 }) {
-  const unavailable = !entry.packageAvailable
+  const unavailable = entry.source === 'builtin' && !entry.packageAvailable
   const installDisabled = disabled || busy || unavailable
 
   return (
@@ -251,8 +446,10 @@ function StoreRow({
         <span className="store-row-meta">
           {entry.type.toUpperCase()}
           {entry.version ? ` · v${entry.version}` : ''}
-          {entry.description ? ` · ${entry.description}` : ''}
-          {unavailable ? ' · package not downloaded' : ''}
+          {entry.description && entry.source !== 'repo' ? ` · ${entry.description}` : ''}
+          {entry.githubPath ? ` · ${entry.githubPath}` : ''}
+          {unavailable ? ' · not bundled' : ''}
+          {showCacheHint && !entry.packageAvailable ? ' · downloads on install' : ''}
         </span>
       </div>
       <div className="store-row-actions">
@@ -261,7 +458,7 @@ function StoreRow({
           disabled={installDisabled}
           title={
             unavailable
-              ? 'Run npm run fetch-app-store to download this package'
+              ? 'Bundled file missing — reinstall Berry Bridge or run fetch-app-store in dev'
               : entry.type === 'apk'
                 ? 'Requires WiFi Storage password on device profile'
                 : undefined

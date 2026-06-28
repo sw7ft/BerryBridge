@@ -43,6 +43,12 @@ const api = {
     importPackage: () =>
       ipcRenderer.invoke('store:import') as Promise<import('@shared/types').AppStoreCatalogItem | null>,
     remove: (id: string) => ipcRenderer.invoke('store:remove', id) as Promise<boolean>,
+    addRepo: (input: string) =>
+      ipcRenderer.invoke('store:addRepo', input) as Promise<import('@shared/types').AppStoreRepo>,
+    refreshRepo: (repoId: string) =>
+      ipcRenderer.invoke('store:refreshRepo', repoId) as Promise<import('@shared/types').AppStoreRepo>,
+    removeRepo: (repoId: string) =>
+      ipcRenderer.invoke('store:removeRepo', repoId) as Promise<boolean>,
     install: (deviceId: string, entryId: string) =>
       ipcRenderer.invoke('store:install', deviceId, entryId) as Promise<{ ok: boolean; message: string }>
   },
