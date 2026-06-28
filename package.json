@@ -1,6 +1,6 @@
 {
   "name": "berrybridge",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Berry Bridge — Desktop Management of BerryCore Devices",
   "main": "./out/main/index.js",
   "author": "BerryCore Community <berrycore@users.noreply.github.com>",
@@ -14,7 +14,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "postinstall": "node scripts/fix-node-pty.js && node scripts/fetch-app-store-packages.js",
+    "postinstall": "node scripts/fix-node-pty.js && node scripts/fetch-app-store-packages.js && node scripts/bundle-smb-tools.js || true",
     "fetch-app-store": "node scripts/fetch-app-store-packages.js",
     "icons": "node scripts/prepare-build-icons.js",
     "dist": "npm run icons && npm run build && electron-builder",
@@ -81,6 +81,11 @@
       {
         "from": "resources/app-store",
         "to": "app-store"
+      },
+      {
+        "from": "resources/samba",
+        "to": "samba",
+        "filter": ["**/*"]
       }
     ],
     "mac": {

@@ -2,7 +2,8 @@ node_modules/
 out/
 release/
 dist/
-build/icon.iconset/
+resources/samba/**/*
+!resources/samba/.gitkeep
 *.log
 .DS_Store
 .env

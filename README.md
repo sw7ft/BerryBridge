@@ -16,13 +16,7 @@ Built with **Electron** for macOS, Linux, and Windows.
 
 ## Requirements
 
-**WiFi Storage** requires `smbclient` (Samba) on your Mac/PC — BB10 only speaks legacy SMB1, which macOS Finder does not support by default:
-
-```bash
-brew install samba   # macOS
-```
-
-Same reason Owl Files works when Finder does not.
+**WiFi Storage** uses a bundled `smbclient` (SMB1) inside Berry Bridge — no separate Samba install needed for the released app. Developers building from source can run `node scripts/bundle-smb-tools.js` after installing Samba, or rely on system `smbclient` if present.
 
 ## Development (macOS Apple Silicon)
 

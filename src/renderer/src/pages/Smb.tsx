@@ -323,8 +323,12 @@ export function SmbPage({ devices, onRefresh }: Props) {
 
       {clientInfo && !clientInfo.available && (
         <div className="alert alert-warn">
-          smbclient not found — <code>brew install samba</code>
+          WiFi Storage tools are missing from this install. Download the latest Berry Bridge release
+          from GitHub.
         </div>
+      )}
+      {clientInfo?.available && clientInfo.bundled && (
+        <p className="field-hint">WiFi Storage tools bundled with Berry Bridge — no extra setup needed.</p>
       )}
 
       {message && (

@@ -19,7 +19,15 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Install Samba for WiFi Storage bundling
+        run: brew install samba
+
       - run: npm ci
+
+      - name: Bundle WiFi Storage tools
+        env:
+          BERRYBRIDGE_FORCE_SMB_BUNDLE: '1'
+        run: node scripts/bundle-smb-tools.js
 
       - run: npm run build
 
@@ -39,12 +47,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          install: mingw-w64-ucrt-x86_64-samba
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
 
       - run: npm ci
+
+      - name: Bundle WiFi Storage tools
+        env:
+          BERRYBRIDGE_FORCE_SMB_BUNDLE: '1'
+        shell: msys2 {0}
+        run: node scripts/bundle-smb-tools.js
 
       - run: npm run build
 
@@ -68,7 +87,15 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Install Samba for WiFi Storage bundling
+        run: sudo apt-get update && sudo apt-get install -y smbclient
+
       - run: npm ci
+
+      - name: Bundle WiFi Storage tools
+        env:
+          BERRYBRIDGE_FORCE_SMB_BUNDLE: '1'
+        run: node scripts/bundle-smb-tools.js
 
       - run: npm run build
 

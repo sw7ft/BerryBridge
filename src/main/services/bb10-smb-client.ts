@@ -7,6 +7,12 @@ import { app } from 'electron'
 import { randomUUID } from 'crypto'
 import { SMB_DEFAULTS, SMB_PATHS, type SmbFileEntry, type SmbShareInfo } from '@shared/types'
 import {
+  bundledSambaDir,
+  resolveBundledSmbclient,
+  smbUnavailableMessage,
+  spawnEnvForBundledSamba
+} from './smb-tool-paths'
+import {
   TERM49_SSH_KEY_SCRIPT,
   term49ManualInstallMessage,
   term49SshKeyInstallScriptContent
@@ -139,8 +145,7 @@ export class Bb10SmbClient {
     if (!this.isAvailable()) {
       return {
         ok: false,
-        message:
-          'smbclient not found. Install Samba (macOS: brew install samba) for BB10 WiFi Storage.'
+        message: smbUnavailableMessage()
       }
     }
 
@@ -293,7 +298,9 @@ export class Bb10SmbClient {
 
   private execSmbclient(args: string[], timeoutMs = SMB_COMMAND_MS): Promise<string> {
     return new Promise((resolve, reject) => {
-      const proc = spawn(this.smbclientPath, args)
+      const proc = spawn(this.smbclientPath, args, {
+        env: spawnEnvForBundledSamba()
+      })
       let stdout = ''
       let stderr = ''
       let settled = false
@@ -348,27 +355,45 @@ export class Bb10SmbClient {
   }
 
   private resolveSmbclient(): string {
+    const bundled = resolveBundledSmbclient()
+    if (bundled) return bundled
+
     const candidates = [
       process.env.SMBCLIENT_PATH,
       '/opt/homebrew/bin/smbclient',
       '/usr/local/bin/smbclient',
-      '/usr/bin/smbclient'
+      '/usr/bin/smbclient',
+      'C:\\msys64\\ucrt64\\bin\\smbclient.exe',
+      'C:\\Program Files\\Samba\\bin\\smbclient.exe'
     ].filter(Boolean) as string[]
 
     for (const p of candidates) {
       if (existsSync(p)) return p
     }
 
-    try {
-      const which = execSync('which smbclient 2>/dev/null || command -v smbclient', {
-        encoding: 'utf8'
-      }).trim()
-      if (which && existsSync(which)) return which
-    } catch {
-      /* ignore */
+    if (process.platform === 'win32') {
+      try {
+        const where = execSync('where smbclient 2>nul', { encoding: 'utf8' }).trim().split('\n')[0]
+        if (where && existsSync(where)) return where
+      } catch {
+        /* ignore */
+      }
+    } else {
+      try {
+        const which = execSync('which smbclient 2>/dev/null || command -v smbclient', {
+          encoding: 'utf8'
+        }).trim()
+        if (which && existsSync(which)) return which
+      } catch {
+        /* ignore */
+      }
     }
 
-    return '/opt/homebrew/bin/smbclient'
+    return bundledSambaDir()
+      ? join(bundledSambaDir()!, process.platform === 'win32' ? 'smbclient.exe' : 'smbclient')
+      : process.platform === 'win32'
+        ? 'smbclient.exe'
+        : '/usr/bin/smbclient'
   }
 }
 

@@ -18,6 +18,7 @@ import {
 } from '@shared/berrycore-install-commands'
 import type { BerryCoreFeed } from './berrycore-feed'
 import type { SmbScanner } from './smb-scanner'
+import { smbUnavailableMessage } from './smb-tool-paths'
 import { discoverSmbAccess, uploadFileToDocuments } from './smb-upload-target'
 
 export interface BerryCoreCacheInfo {
@@ -133,8 +134,7 @@ export class BerryCoreSetupService {
     if (!this.smb.getClientInfo().available) {
       return {
         ok: false,
-        message:
-          'WiFi Storage tools not available — install Samba on this computer (macOS: brew install samba).'
+        message: smbUnavailableMessage()
       }
     }
 

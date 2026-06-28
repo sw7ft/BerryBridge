@@ -1,6 +1,7 @@
 import { SMB_DEFAULTS, type DeviceProfile, type SmbHost } from '@shared/types'
 import { detectSubnets, generateIpRange, probePort } from './network-utils'
 import { Bb10SmbClient, SmbSessionPool } from './bb10-smb-client'
+import { bundledSambaDir } from './smb-tool-paths'
 import { discoverSmbAccess } from './smb-upload-target'
 
 export class SmbScanner {
@@ -128,6 +129,7 @@ export class SmbScanner {
   getClientInfo() {
     return {
       available: this.client.isAvailable(),
+      bundled: Boolean(bundledSambaDir()),
       smbclientPath: this.client.getSmbclientPath(),
       protocol: 'SMB1 (NT1) — batch commands via smbclient',
       port: SMB_DEFAULTS.port,

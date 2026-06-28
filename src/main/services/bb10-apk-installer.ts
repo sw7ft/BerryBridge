@@ -4,6 +4,7 @@ import { DEVICE_PATHS, type DeviceProfile } from '@shared/types'
 import type { SmbScanner } from './smb-scanner'
 import type { SshManager } from './ssh-manager'
 import { uploadFileToDocuments } from './smb-upload-target'
+import { smbUnavailableMessage } from './smb-tool-paths'
 
 /** APK sideload — BB10 dev-mode "Install" is BAR-only and returns failure 500 'Package-Id'. */
 export class Bb10ApkInstaller {
@@ -90,8 +91,7 @@ export class Bb10ApkInstaller {
     if (!this.smb.getClientInfo().available) {
       return {
         ok: false,
-        message:
-          'smbclient not found — install Samba (macOS: brew install samba) to upload APK files over WiFi Storage.'
+        message: smbUnavailableMessage()
       }
     }
 

@@ -13,6 +13,8 @@ Tag **`v0.1.0`** (or current `package.json` version) to trigger [`.github/workfl
 
 Blockmap files (`.blockmap`) are included for auto-update support later.
 
+WiFi Storage (`smbclient` + SMB1 libraries) is bundled inside each installer — users do not install Samba separately.
+
 ## Before tagging
 
 1. Bump `version` in `package.json`.
