@@ -1,6 +1,10 @@
 # Berry Bridge — first release checklist
 
-Tag **`v0.1.0`** (or current `package.json` version) to trigger [`.github/workflows/release.yml`](../.github/workflows/release.yml).
+## v0.1.5 — WiFi Storage works out of the box
+
+Berry Bridge now bundles `smbclient` (SMB1) for **Windows, macOS, and Linux**. No manual Samba install — download, install, and use WiFi Storage immediately.
+
+Tag **`v0.1.5`** to trigger [`.github/workflows/release.yml`](../.github/workflows/release.yml).
 
 ## Expected GitHub Release assets
 
