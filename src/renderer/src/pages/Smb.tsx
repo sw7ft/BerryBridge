@@ -1,8 +1,17 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
-import { SMB_DEFAULTS, type DeviceProfile, type SmbFileEntry, type SmbShareInfo } from '@shared/types'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import {
+  SMB_DEFAULTS,
+  type DeviceProfile,
+  type SmbFileEntry,
+  type SmbMediaPreview,
+  type SmbShareInfo
+} from '@shared/types'
+import { isMediaFile, getMediaKind } from '@shared/media-utils'
 import { testSmbForDevice } from '../utils/smb-connect'
+import { SmbMediaPreviewModal, SmbMediaPreviewPanel } from '../components/SmbMediaPreview'
 
 type ViewMode = 'list' | 'tiles'
+type FileFilter = 'all' | 'media'
 
 const VIEW_STORAGE_KEY = 'berrybridge-smb-view'
 
@@ -26,6 +35,10 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
 }
 
+function remotePathFor(path: string, name: string): string {
+  return path ? `${path}/${name}` : name
+}
+
 export function SmbPage({ devices, onRefresh }: Props) {
   const [clientInfo, setClientInfo] = useState<Record<string, string | boolean> | null>(null)
   const [selectedDeviceId, setSelectedDeviceId] = useState('')
@@ -40,10 +53,40 @@ export function SmbPage({ devices, onRefresh }: Props) {
   const [loading, setLoading] = useState(false)
   const [busyFile, setBusyFile] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>(() => readViewMode())
+  const [fileFilter, setFileFilter] = useState<FileFilter>('all')
+  const [selectedMedia, setSelectedMedia] = useState<SmbFileEntry | null>(null)
+  const [preview, setPreview] = useState<SmbMediaPreview | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState('')
+  const [fullscreenPreview, setFullscreenPreview] = useState(false)
+  const [thumbUrls, setThumbUrls] = useState<Record<string, string>>({})
   const sessionRef = useRef<string | null>(null)
+  const previewRequestRef = useRef(0)
 
   const device = devices.find((d) => d.id === selectedDeviceId)
   const host = device?.host || ''
+
+  const mediaEntries = useMemo(
+    () => entries.filter((e) => !e.isDirectory && isMediaFile(e.name)),
+    [entries]
+  )
+
+  const visibleEntries = useMemo(() => {
+    if (fileFilter === 'all') return entries
+    return entries.filter((e) => e.isDirectory || isMediaFile(e.name))
+  }, [entries, fileFilter])
+
+  useEffect(() => {
+    if (/camera/i.test(path) && mediaEntries.length > 0) {
+      setFileFilter('media')
+    } else if (!/camera/i.test(path)) {
+      setFileFilter('all')
+    }
+  }, [path, mediaEntries.length])
+
+  const mediaIndex = selectedMedia
+    ? mediaEntries.findIndex((e) => e.name === selectedMedia.name)
+    : -1
 
   useEffect(() => {
     window.berrybridge.smb.info().then(setClientInfo)
@@ -70,6 +113,15 @@ export function SmbPage({ devices, onRefresh }: Props) {
     }
   }
 
+  const clearPreview = useCallback(() => {
+    previewRequestRef.current += 1
+    setSelectedMedia(null)
+    setPreview(null)
+    setPreviewLoading(false)
+    setPreviewError('')
+    setFullscreenPreview(false)
+  }, [])
+
   const disconnect = useCallback(() => {
     if (sessionRef.current) {
       window.berrybridge.smb.closeSession(sessionRef.current)
@@ -78,13 +130,15 @@ export function SmbPage({ devices, onRefresh }: Props) {
     setConnected(false)
     setEntries([])
     setPath('')
-  }, [])
+    clearPreview()
+  }, [clearPreview])
 
   const loadDir = useCallback(
     async (share: string, dirPath: string, sessionId?: string) => {
       const sid = sessionId || sessionRef.current
       if (!sid) return
       setLoading(true)
+      clearPreview()
       try {
         const list = await window.berrybridge.smb.listDirSession(sid, dirPath)
         setActiveShare(share)
@@ -97,7 +151,39 @@ export function SmbPage({ devices, onRefresh }: Props) {
         setLoading(false)
       }
     },
-    [disconnect]
+    [clearPreview, disconnect]
+  )
+
+  const loadPreview = useCallback(
+    async (entry: SmbFileEntry) => {
+      const sid = sessionRef.current
+      if (!sid || entry.isDirectory || !isMediaFile(entry.name)) return
+
+      const requestId = ++previewRequestRef.current
+      setSelectedMedia(entry)
+      setPreview(null)
+      setPreviewError('')
+      setPreviewLoading(true)
+
+      try {
+        const remote = remotePathFor(path, entry.name)
+        const result = await window.berrybridge.smb.previewMedia(sid, remote, entry.size)
+        if (requestId !== previewRequestRef.current) return
+        setPreview(result)
+        if (result.kind === 'image') {
+          const key = remote
+          setThumbUrls((prev) => ({ ...prev, [key]: result.url }))
+        }
+      } catch (e) {
+        if (requestId !== previewRequestRef.current) return
+        setPreviewError(String(e))
+      } finally {
+        if (requestId === previewRequestRef.current) {
+          setPreviewLoading(false)
+        }
+      }
+    },
+    [path]
   )
 
   const connect = async () => {
@@ -164,9 +250,14 @@ export function SmbPage({ devices, onRefresh }: Props) {
   }
 
   const openEntry = (entry: SmbFileEntry) => {
-    if (!entry.isDirectory) return
-    const next = path ? `${path}/${entry.name}` : entry.name
-    loadDir(activeShare, next)
+    if (entry.isDirectory) {
+      const next = path ? `${path}/${entry.name}` : entry.name
+      loadDir(activeShare, next)
+      return
+    }
+    if (isMediaFile(entry.name)) {
+      loadPreview(entry)
+    }
   }
 
   const goUp = () => {
@@ -177,7 +268,7 @@ export function SmbPage({ devices, onRefresh }: Props) {
   }
 
   const download = async (entry: SmbFileEntry) => {
-    const remote = path ? `${path}/${entry.name}` : entry.name
+    const remote = remotePathFor(path, entry.name)
     setBusyFile(entry.name)
     try {
       const result = await window.berrybridge.smb.download(host, activeShare, password, remote)
@@ -209,13 +300,30 @@ export function SmbPage({ devices, onRefresh }: Props) {
     onRefresh()
   }
 
-  const pathParts = path ? path.split('/') : []
-  const dirCount = entries.filter((e) => e.isDirectory).length
-  const fileCount = entries.length - dirCount
+  const showPrevMedia = () => {
+    if (mediaIndex > 0) loadPreview(mediaEntries[mediaIndex - 1])
+  }
 
-  const renderEmpty = () => (
-    <div className="smb-empty">Empty folder</div>
-  )
+  const showNextMedia = () => {
+    if (mediaIndex >= 0 && mediaIndex < mediaEntries.length - 1) {
+      loadPreview(mediaEntries[mediaIndex + 1])
+    }
+  }
+
+  const pathParts = path ? path.split('/') : []
+  const dirCount = visibleEntries.filter((e) => e.isDirectory).length
+  const fileCount = visibleEntries.length - dirCount
+  const previewOpen = Boolean(selectedMedia || previewLoading)
+
+  const renderEmpty = () => <div className="smb-empty">Empty folder</div>
+
+  const entryClassName = (entry: SmbFileEntry) => {
+    const classes = []
+    if (entry.isDirectory) classes.push('is-dir')
+    if (isMediaFile(entry.name)) classes.push('is-media')
+    if (selectedMedia?.name === entry.name) classes.push('is-selected')
+    return classes.join(' ')
+  }
 
   const renderList = () => (
     <table className="smb-table">
@@ -234,18 +342,26 @@ export function SmbPage({ devices, onRefresh }: Props) {
               Empty folder
             </td>
           </tr>
+        ) : visibleEntries.length === 0 ? (
+          <tr>
+            <td colSpan={4} className="empty-cell">
+              No photos or videos in this folder — switch to All files or open a subfolder.
+            </td>
+          </tr>
         ) : (
-          entries.map((entry) => (
+          visibleEntries.map((entry) => (
             <tr
               key={entry.name}
-              className={entry.isDirectory ? 'is-dir' : ''}
-              onDoubleClick={() => entry.isDirectory && openEntry(entry)}
+              className={entryClassName(entry)}
+              onDoubleClick={() => openEntry(entry)}
             >
               <td
                 className="smb-name-cell"
-                onClick={() => entry.isDirectory && openEntry(entry)}
+                onClick={() => openEntry(entry)}
               >
-                <span className={`smb-type-icon ${entry.isDirectory ? 'dir' : 'file'}`} />
+                <span
+                  className={`smb-type-icon ${entry.isDirectory ? 'dir' : isMediaFile(entry.name) ? getMediaKind(entry.name) || 'file' : 'file'}`}
+                />
                 {entry.name}
               </td>
               <td className="smb-size-cell">
@@ -272,40 +388,64 @@ export function SmbPage({ devices, onRefresh }: Props) {
 
   const renderTiles = () => {
     if (entries.length === 0) return renderEmpty()
+    if (visibleEntries.length === 0) {
+      return (
+        <div className="smb-empty">
+          No photos or videos in this folder — switch to All files or open a subfolder.
+        </div>
+      )
+    }
     return (
       <div className="smb-tile-grid">
-        {entries.map((entry) => (
-          <div
-            key={entry.name}
-            className={`smb-tile ${entry.isDirectory ? 'is-dir' : ''}`}
-            onDoubleClick={() => entry.isDirectory && openEntry(entry)}
-          >
-            <button
-              type="button"
-              className="smb-tile-main"
-              onClick={() => entry.isDirectory && openEntry(entry)}
-              disabled={!entry.isDirectory}
+        {visibleEntries.map((entry) => {
+          const remote = remotePathFor(path, entry.name)
+          const thumb = !entry.isDirectory ? thumbUrls[remote] : undefined
+          const mediaKind = !entry.isDirectory ? getMediaKind(entry.name) : null
+
+          return (
+            <div
+              key={entry.name}
+              className={`smb-tile ${entryClassName(entry)}`}
+              onDoubleClick={() => openEntry(entry)}
             >
-              <span className={`smb-tile-icon smb-type-icon ${entry.isDirectory ? 'dir' : 'file'}`} />
-              <span className="smb-tile-name" title={entry.name}>
-                {entry.name}
-              </span>
-              <span className="smb-tile-meta">
-                {entry.isDirectory ? 'Folder' : formatSize(entry.size)}
-              </span>
-            </button>
-            {!entry.isDirectory && (
               <button
                 type="button"
-                className="btn btn-secondary btn-sm smb-tile-dl"
-                disabled={busyFile === entry.name}
-                onClick={() => download(entry)}
+                className="smb-tile-main"
+                onClick={() => openEntry(entry)}
               >
-                {busyFile === entry.name ? '…' : 'Download'}
+                {thumb ? (
+                  <img src={thumb} alt="" className="smb-tile-thumb" />
+                ) : (
+                  <span
+                    className={`smb-tile-icon smb-type-icon ${entry.isDirectory ? 'dir' : mediaKind || 'file'}`}
+                  />
+                )}
+                <span className="smb-tile-name" title={entry.name}>
+                  {entry.name}
+                </span>
+                <span className="smb-tile-meta">
+                  {entry.isDirectory
+                    ? 'Folder'
+                    : mediaKind
+                      ? mediaKind === 'image'
+                        ? 'Photo'
+                        : 'Video'
+                      : formatSize(entry.size)}
+                </span>
               </button>
-            )}
-          </div>
-        ))}
+              {!entry.isDirectory && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm smb-tile-dl"
+                  disabled={busyFile === entry.name}
+                  onClick={() => download(entry)}
+                >
+                  {busyFile === entry.name ? '…' : 'Download'}
+                </button>
+              )}
+            </div>
+          )
+        })}
       </div>
     )
   }
@@ -317,7 +457,7 @@ export function SmbPage({ devices, onRefresh }: Props) {
         <p>
           Browse and transfer files on your device WiFi Storage shares — connect to{' '}
           <code className="code-inline">media</code>, <code className="code-inline">documents</code>,
-          or other available shares.
+          or other available shares. Photos and videos can be previewed in the app.
         </p>
       </header>
 
@@ -404,6 +544,7 @@ export function SmbPage({ devices, onRefresh }: Props) {
                 <span>·</span>
                 <span>
                   {dirCount} folders, {fileCount} files
+                  {mediaEntries.length > 0 ? ` · ${mediaEntries.length} photos/videos` : ''}
                 </span>
               </>
             )}
@@ -426,75 +567,120 @@ export function SmbPage({ devices, onRefresh }: Props) {
       )}
 
       {connected && (
-        <div className="card smb-browser-card">
-          <div className="smb-toolbar">
+        <div className={`smb-browser-layout${previewOpen ? ' has-preview' : ''}`}>
+          <div className="card smb-browser-card">
+            <div className="smb-toolbar">
+              <div className="smb-view-toggle" role="group" aria-label="View mode">
+              <button
+                type="button"
+                className={`smb-view-btn ${fileFilter === 'all' ? 'active' : ''}`}
+                onClick={() => setFileFilter('all')}
+                aria-pressed={fileFilter === 'all'}
+              >
+                All files
+              </button>
+              <button
+                type="button"
+                className={`smb-view-btn ${fileFilter === 'media' ? 'active' : ''}`}
+                onClick={() => setFileFilter('media')}
+                aria-pressed={fileFilter === 'media'}
+              >
+                Photos & videos
+                {mediaEntries.length > 0 ? ` (${mediaEntries.length})` : ''}
+              </button>
+            </div>
             <div className="smb-view-toggle" role="group" aria-label="View mode">
-              <button
-                type="button"
-                className={`smb-view-btn ${viewMode === 'list' ? 'active' : ''}`}
-                onClick={() => setView('list')}
-                title="List view"
-                aria-pressed={viewMode === 'list'}
-              >
-                List
-              </button>
-              <button
-                type="button"
-                className={`smb-view-btn ${viewMode === 'tiles' ? 'active' : ''}`}
-                onClick={() => setView('tiles')}
-                title="Tile view"
-                aria-pressed={viewMode === 'tiles'}
-              >
-                Tiles
-              </button>
-            </div>
-            <div className="btn-row" style={{ margin: 0, marginLeft: 'auto' }}>
-              {path && (
-                <button className="btn btn-secondary btn-sm" onClick={goUp}>
-                  ↑ Up
+                <button
+                  type="button"
+                  className={`smb-view-btn ${viewMode === 'list' ? 'active' : ''}`}
+                  onClick={() => setView('list')}
+                  title="List view"
+                  aria-pressed={viewMode === 'list'}
+                >
+                  List
                 </button>
-              )}
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={upload}
-                disabled={busyFile === '__upload__'}
-              >
-                {busyFile === '__upload__' ? 'Uploading…' : 'Upload'}
-              </button>
-            </div>
-          </div>
-
-          {pathParts.length > 0 && (
-            <div className="smb-breadcrumbs">
-              <button className="crumb" onClick={() => loadDir(activeShare, '')}>
-                {activeShare}
-              </button>
-              {pathParts.map((part, i) => (
-                <span key={i}>
-                  <span className="crumb-sep">/</span>
-                  <button
-                    className="crumb"
-                    onClick={() => loadDir(activeShare, pathParts.slice(0, i + 1).join('/'))}
-                  >
-                    {part}
+                <button
+                  type="button"
+                  className={`smb-view-btn ${viewMode === 'tiles' ? 'active' : ''}`}
+                  onClick={() => setView('tiles')}
+                  title="Tile view"
+                  aria-pressed={viewMode === 'tiles'}
+                >
+                  Tiles
+                </button>
+              </div>
+              <div className="btn-row" style={{ margin: 0, marginLeft: 'auto' }}>
+                {path && (
+                  <button className="btn btn-secondary btn-sm" onClick={goUp}>
+                    ↑ Up
                   </button>
-                </span>
-              ))}
-            </div>
-          )}
-
-          {loading ? (
-            <div className="smb-loading">
-              <div className="scan-progress-bar">
-                <div className="scan-progress-fill smb-indeterminate" />
+                )}
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={upload}
+                  disabled={busyFile === '__upload__'}
+                >
+                  {busyFile === '__upload__' ? 'Uploading…' : 'Upload'}
+                </button>
               </div>
             </div>
-          ) : viewMode === 'list' ? (
-            renderList()
-          ) : (
-            renderTiles()
+
+            {pathParts.length > 0 && (
+              <div className="smb-breadcrumbs">
+                <button className="crumb" onClick={() => loadDir(activeShare, '')}>
+                  {activeShare}
+                </button>
+                {pathParts.map((part, i) => (
+                  <span key={i}>
+                    <span className="crumb-sep">/</span>
+                    <button
+                      className="crumb"
+                      onClick={() => loadDir(activeShare, pathParts.slice(0, i + 1).join('/'))}
+                    >
+                      {part}
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {loading ? (
+              <div className="smb-loading">
+                <div className="scan-progress-bar">
+                  <div className="scan-progress-fill smb-indeterminate" />
+                </div>
+              </div>
+            ) : viewMode === 'list' ? (
+              renderList()
+            ) : (
+              renderTiles()
+            )}
+          </div>
+
+          {previewOpen && (
+            <SmbMediaPreviewPanel
+              preview={preview}
+              loading={previewLoading}
+              error={previewError}
+              entry={selectedMedia}
+              hasPrev={mediaIndex > 0}
+              hasNext={mediaIndex >= 0 && mediaIndex < mediaEntries.length - 1}
+              onPrev={showPrevMedia}
+              onNext={showNextMedia}
+              onExpand={() => setFullscreenPreview(true)}
+              onDownload={() => selectedMedia && download(selectedMedia)}
+              onClose={clearPreview}
+              onMediaError={() =>
+                setPreviewError('Could not display image — try Download or refresh the preview.')
+              }
+              downloading={Boolean(selectedMedia && busyFile === selectedMedia.name)}
+            />
           )}
         </div>
+      )}
+
+      {fullscreenPreview && preview && (
+        <SmbMediaPreviewModal preview={preview} onClose={() => setFullscreenPreview(false)} />
       )}
     </>
   )

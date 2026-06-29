@@ -1,6 +1,6 @@
 {
   "name": "berrybridge",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Berry Bridge — Desktop Management of BerryCore Devices",
   "main": "./out/main/index.js",
   "author": "BerryCore Community <berrycore@users.noreply.github.com>",
@@ -85,6 +85,11 @@
       {
         "from": "resources/samba",
         "to": "samba",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "resources/berrybridge-agent",
+        "to": "berrybridge-agent",
         "filter": ["**/*"]
       }
     ],

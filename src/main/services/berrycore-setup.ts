@@ -18,6 +18,7 @@ import {
 } from '@shared/berrycore-install-commands'
 import type { BerryCoreFeed } from './berrycore-feed'
 import type { SmbScanner } from './smb-scanner'
+import type { BerryBridgeAgentService } from './berrybridge-agent-service'
 import { smbUnavailableMessage } from './smb-tool-paths'
 import { discoverSmbAccess, uploadFileToDocuments } from './smb-upload-target'
 
@@ -32,7 +33,8 @@ export interface BerryCoreCacheInfo {
 export class BerryCoreSetupService {
   constructor(
     private feed: BerryCoreFeed,
-    private smb: SmbScanner
+    private smb: SmbScanner,
+    private agent?: BerryBridgeAgentService
   ) {}
 
   private cacheRoot(): string {
@@ -120,7 +122,7 @@ export class BerryCoreSetupService {
   async uploadToDevice(
     device: DeviceProfile,
     onProgress?: (progress: BerryCoreUploadProgress) => void
-  ): Promise<{ ok: boolean; message: string }> {
+  ): Promise<import('@shared/types').BerryCoreDeviceUploadResult> {
     const emit = (progress: BerryCoreUploadProgress) => onProgress?.(progress)
 
     if (!device.smbPassword) {
@@ -156,6 +158,11 @@ export class BerryCoreSetupService {
       { localPath: cached.installSh, fileName: 'install.sh' },
       { localPath: scriptLocal, fileName: TERM49_BERRYCORE_SCRIPT }
     ]
+
+    const agentTgz = this.agent?.resolveAgentTgzPath()
+    if (agentTgz) {
+      uploads.splice(2, 0, { localPath: agentTgz, fileName: 'berrybridge-agent-bb10-0.1.0.tgz' })
+    }
 
     const sizes = uploads.map((u) => statSync(u.localPath).size)
     const totalBytes = sizes.reduce((sum, n) => sum + n, 0)
@@ -217,6 +224,54 @@ export class BerryCoreSetupService {
         percent: 100,
         indeterminate: false
       })
+
+      const agentStatus = this.agent ? await this.agent.readStatus(device, access) : null
+      const agentReady = this.agent?.isAgentReady(agentStatus) ?? false
+
+      if (agentReady && this.agent) {
+        emit({
+          phase: 'agent-running',
+          message: 'Berry Bridge agent detected — installing BerryCore…',
+          indeterminate: true
+        })
+        const agentResult = await this.agent.runInstallBerryCore(device, access, (p) => {
+          emit({
+            phase: p.phase === 'agent-polling' ? 'agent-polling' : 'agent-running',
+            message: p.message,
+            indeterminate: true
+          })
+        })
+        if (agentResult.ok) {
+          emit({
+            phase: 'done',
+            message: agentResult.message,
+            percent: 100,
+            indeterminate: false
+          })
+          return {
+            ok: true,
+            message: agentResult.message,
+            method: 'agent',
+            berrycoreInstalled: true
+          }
+        }
+      }
+
+      if (agentStatus?.berrycore?.installed) {
+        return {
+          ok: true,
+          message: `BerryCore is already installed on ${device.name} (agent v${agentStatus.agent?.version || '?'}).`,
+          method: 'agent',
+          berrycoreInstalled: true
+        }
+      }
+
+      return {
+        ok: true,
+        message: term49BerryCoreUploadMessage(agentReady),
+        method: 'term49',
+        berrycoreInstalled: false
+      }
     } catch (err) {
       const hint = err instanceof Error ? err.message : String(err)
       emit({
@@ -236,8 +291,6 @@ export class BerryCoreSetupService {
         /* ignore */
       }
     }
-
-    return { ok: true, message: term49BerryCoreUploadMessage() }
   }
 
   private async downloadAsset(url: string, dest: string): Promise<void> {

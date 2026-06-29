@@ -61,7 +61,7 @@ export async function discoverSmbAccess(
   )
 }
 
-async function probeDocumentsDir(smb: SmbScanner, access: SmbDeviceAccess): Promise<string> {
+export async function probeDocumentsDir(smb: SmbScanner, access: SmbDeviceAccess): Promise<string> {
   for (const dir of DOCUMENTS_DIR_CANDIDATES) {
     try {
       await smb.listDirectory(access.host, access.share, access.password, dir, access.username)

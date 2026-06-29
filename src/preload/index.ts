@@ -91,6 +91,10 @@ const api = {
     listDirSession: (sessionId: string, path?: string) =>
       ipcRenderer.invoke('smb:listDirSession', sessionId, path),
     closeSession: (sessionId: string) => ipcRenderer.invoke('smb:closeSession', sessionId),
+    previewMedia: (sessionId: string, remotePath: string, expectedSize?: number) =>
+      ipcRenderer.invoke('smb:previewMedia', sessionId, remotePath, expectedSize) as Promise<
+        import('@shared/types').SmbMediaPreview
+      >,
     listDir: (host: string, share: string, password: string, path?: string) =>
       ipcRenderer.invoke('smb:listDir', host, share, password, path),
     download: (host: string, share: string, password: string, remotePath: string) =>
@@ -122,10 +126,9 @@ const api = {
         installSh: string
       } | null>,
     uploadToDevice: (deviceId: string) =>
-      ipcRenderer.invoke('berrycore:uploadToDevice', deviceId) as Promise<{
-        ok: boolean
-        message: string
-      }>,
+      ipcRenderer.invoke('berrycore:uploadToDevice', deviceId) as Promise<
+        import('@shared/types').BerryCoreDeviceUploadResult
+      >,
     onUploadProgress: (
       callback: (progress: import('@shared/types').BerryCoreUploadProgress) => void
     ) => {
@@ -143,6 +146,13 @@ const api = {
     installBar: (deviceIp: string, barPath: string, devPassword?: string) =>
       ipcRenderer.invoke('apps:installBar', deviceIp, barPath, devPassword),
     managerInfo: () => ipcRenderer.invoke('apps:managerInfo')
+  },
+  agent: {
+    probe: (deviceId: string) =>
+      ipcRenderer.invoke('agent:probe', deviceId) as Promise<{
+        ready: boolean
+        status: import('@shared/types').BerryBridgeAgentStatus | null
+      }>
   },
   shell: {
     openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),

@@ -7,19 +7,22 @@ import { SmbScanner } from './services/smb-scanner'
 import { DeviceScanner } from './services/device-scanner'
 import { BerryCoreFeed } from './services/berrycore-feed'
 import { BerryCoreSetupService } from './services/berrycore-setup'
+import { BerryBridgeAgentService } from './services/berrybridge-agent-service'
 import { Bb10AppInstaller } from './services/bb10-app-installer'
 import { Bb10ApkInstaller } from './services/bb10-apk-installer'
 import { AppStoreService } from './services/app-store-service'
 import { TerminalManager } from './services/terminal-manager'
 import { detectSubnets } from './services/network-utils'
+import { registerSmbPreviewProtocol, setupSmbPreviewProtocolHandler } from './services/smb-preview-cache'
 import type { DeviceProfile } from '@shared/types'
 
 const store = new DeviceStore()
 const sshManager = new SshManager()
 const smbScanner = new SmbScanner()
+const agentService = new BerryBridgeAgentService(smbScanner)
 const deviceScanner = new DeviceScanner()
 const berryCoreFeed = new BerryCoreFeed()
-const berryCoreSetup = new BerryCoreSetupService(berryCoreFeed, smbScanner)
+const berryCoreSetup = new BerryCoreSetupService(berryCoreFeed, smbScanner, agentService)
 const bb10Installer = new Bb10AppInstaller()
 const bb10ApkInstaller = new Bb10ApkInstaller(smbScanner, sshManager)
 const appStore = new AppStoreService(bb10Installer, bb10ApkInstaller)
@@ -113,15 +116,30 @@ function registerIpc(): void {
     }
 
     const upload = await smbScanner.provisionSshKey(device, publicKeyPath)
+    const agentResult = await agentService.runInstallSshKey(device, upload.keyFileName)
+
+    if (agentResult.ok) {
+      const test = await sshManager.testConnection({ ...device, identityFile: publicKeyPath })
+      return {
+        method: 'agent',
+        message: `${agentResult.message}\n\n${test.message}`,
+        sshOk: test.ok
+      }
+    }
 
     try {
-      const sshMsg = await sshManager.installKeyFromMisc(device, upload.keyFileName)
+      const sshMsg = await sshManager.installKeyFromSetup(device, upload.keyFileName)
+      const test = await sshManager.testConnection({ ...device, identityFile: publicKeyPath })
       return {
         method: 'smb+ssh',
-        message: `${upload.message.split('\n\nOn your BB10')[0]}\n\n${sshMsg} Test SSH connection.`
+        message: `${sshMsg}\n\n${test.message}`,
+        sshOk: test.ok
       }
     } catch {
-      return upload
+      return {
+        method: 'smb',
+        message: `${upload.message}\n\n${agentResult.message}`
+      }
     }
   })
   ipcMain.handle('ssh:testConnection', (_e, device: DeviceProfile) =>
@@ -170,6 +188,11 @@ function registerIpc(): void {
   ipcMain.handle('smb:closeSession', (_e, sessionId: string) =>
     smbScanner.closeSession(sessionId)
   )
+  ipcMain.handle(
+    'smb:previewMedia',
+    (_e, sessionId: string, remotePath: string, expectedSize?: number) =>
+      smbScanner.previewMedia(sessionId, remotePath, expectedSize || 0)
+  )
   ipcMain.handle('smb:listShares', (_e, host: string, password: string) =>
     smbScanner.listShares(host, password)
   )
@@ -215,6 +238,12 @@ function registerIpc(): void {
     if (!device) return { ok: false, message: 'Device not found' }
     return berryCoreSetup.uploadToDevice(device, broadcastBerryCoreUploadProgress)
   })
+  ipcMain.handle('agent:probe', async (_e, deviceId: string) => {
+    const device = store.getDevice(deviceId)
+    if (!device) return { ready: false, status: null as import('@shared/types').BerryBridgeAgentStatus | null }
+    const status = await agentService.readStatus(device)
+    return { ready: agentService.isAgentReady(status), status }
+  })
 
   // BB10 app install (bb10-app-manager protocol)
   ipcMain.handle('apps:openManager', (_e, deviceIp: string, devPassword?: string) =>
@@ -247,8 +276,11 @@ function registerIpc(): void {
 
 app.commandLine.appendSwitch('ignore-certificate-errors')
 
+registerSmbPreviewProtocol()
+
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.berrycore.berrybridge')
+  setupSmbPreviewProtocolHandler()
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)

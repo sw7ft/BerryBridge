@@ -213,9 +213,9 @@ Host ${hostAlias}
     }
     await this.execRemote(
       device,
-      `cat ${miscPath} >> ${DEVICE_PATHS.ssh.authorizedKeys} && chmod 600 ${DEVICE_PATHS.ssh.authorizedKeys}`
+      `cat ${setupPath} >> ${DEVICE_PATHS.ssh.authorizedKeys} && chmod 600 ${DEVICE_PATHS.ssh.authorizedKeys}`
     )
-    return `Key installed from ${miscPath} → ${DEVICE_PATHS.ssh.authorizedKeys}.`
+    return `Key installed from ${setupPath} → ${DEVICE_PATHS.ssh.authorizedKeys}.`
   }
 
   async provisionKeyToDevice(

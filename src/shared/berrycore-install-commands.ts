@@ -21,10 +21,15 @@ export function term49BerryCoreInstallScriptContent(): string {
 }
 
 /** Short instructions after WiFi Storage upload of BerryCore files. */
-export function term49BerryCoreUploadMessage(): string {
+export function term49BerryCoreUploadMessage(agentDetected = false): string {
   const dir = DEVICE_PATHS.berrycore.transferDir
   const share = DEVICE_PATHS.berrycore.transferShare
+  if (agentDetected) {
+    return `Upload complete. Berry Bridge agent is on the device but could not finish the install automatically.
+
+Open ${TERM49_BERRYCORE_SCRIPT} in ${dir} (WiFi Storage → ${share} share), copy the commands, paste into Term49, and run install.sh once. The agent will handle SSH setup afterward.`
+  }
   return `Upload complete — finish on your phone before continuing.
 
-Open ${TERM49_BERRYCORE_SCRIPT} in ${dir} (WiFi Storage → ${share} share), copy the commands, paste into Term49 (meta mode + Ctrl+V), and run the installer.`
+Open ${TERM49_BERRYCORE_SCRIPT} in ${dir} (WiFi Storage → ${share} share), copy the commands, paste into Term49 (meta mode + Ctrl+V), and run the installer. berrybridge-agent-bb10-0.1.0.tgz is included for bootstrap — install.sh installs the agent automatically.`
 }

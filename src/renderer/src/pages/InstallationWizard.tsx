@@ -102,6 +102,7 @@ export function InstallationWizard({
   })
   const [term49Done, setTerm49Done] = useState(false)
   const [berryCoreUploaded, setBerryCoreUploaded] = useState(false)
+  const [berryCoreViaAgent, setBerryCoreViaAgent] = useState(false)
   const [berryCoreConfirmed, setBerryCoreConfirmed] = useState(false)
 
   const [keys, setKeys] = useState<SshKeyInfo[]>([])
@@ -110,6 +111,7 @@ export function InstallationWizard({
   const [term49KeyDone, setTerm49KeyDone] = useState(false)
   const [keyInstalled, setKeyInstalled] = useState(false)
   const [sshKeyUploaded, setSshKeyUploaded] = useState(false)
+  const [sshViaAgent, setSshViaAgent] = useState(false)
   const [sshOk, setSshOk] = useState<boolean | null>(null)
 
   const [status, setStatus] = useState('')
@@ -330,6 +332,15 @@ export function InstallationWizard({
       setStatus(up.message)
       if (up.ok && device.id) {
         setBerryCoreUploaded(true)
+        setBerryCoreViaAgent(up.method === 'agent' && up.berrycoreInstalled === true)
+        if (up.method === 'agent' && up.berrycoreInstalled) {
+          setBerryCoreConfirmed(true)
+          try {
+            localStorage.setItem(qsBerryCoreInstalledKey(device.id), '1')
+          } catch {
+            /* ignore */
+          }
+        }
         try {
           localStorage.setItem(qsBerryCoreUploadedKey(device.id), '1')
         } catch {
@@ -370,8 +381,10 @@ export function InstallationWizard({
       }
 
       setSshKeyUploaded(true)
-      if (result.method === 'ssh' || result.method === 'smb+ssh') {
+      setSshViaAgent(result.method === 'agent')
+      if (result.method === 'agent' || result.method === 'ssh' || result.method === 'smb+ssh') {
         setKeyInstalled(true)
+        setTerm49KeyDone(result.method === 'agent')
       } else {
         setKeyInstalled(false)
         setTerm49KeyDone(false)
@@ -381,6 +394,14 @@ export function InstallationWizard({
       await window.berrybridge.devices.save(saved)
       onRefresh()
       await window.berrybridge.ssh.writeConfigEntry(saved)
+
+      if (result.method === 'agent' && 'sshOk' in result && typeof result.sshOk === 'boolean') {
+        setSshOk(result.sshOk)
+        setStatusOk(result.sshOk)
+        setStatus(result.message)
+        if (result.sshOk) setTerm49KeyDone(true)
+        return
+      }
 
       setStatus('Testing SSH connection…')
       const test = await window.berrybridge.ssh.testConnection(saved)
@@ -627,6 +648,8 @@ export function InstallationWizard({
         const pipelineProgressIndeterminate =
           berrycorePipelinePhase === 'checking' ||
           berrycorePipelinePhase === 'downloading' ||
+          uploadProgress?.phase === 'agent-polling' ||
+          uploadProgress?.phase === 'agent-running' ||
           uploadProgress?.indeterminate
         const pipelineProgressLabel =
           uploadProgress?.message ??
@@ -699,9 +722,44 @@ export function InstallationWizard({
                   </div>
                 )}
                 {statusOk === false && statusAlert}
-                {(statusOk || berryCoreUploaded) && (
+                {(statusOk || berryCoreUploaded) && !berryCoreViaAgent && (
                   <div ref={phoneStepsRef}>
                     <Term49BerryCoreInstallGuide prominent uploadComplete />
+                    <div className="btn-row" style={{ marginTop: 12 }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        disabled={pipelineBusy || !device}
+                        onClick={async () => {
+                          if (!device) return
+                          setPipelineBusy(true)
+                          try {
+                            const probe = await window.berrybridge.agent.probe(device.id)
+                            if (probe.status?.berrycore?.installed) {
+                              setBerryCoreViaAgent(probe.ready)
+                              confirmBerryCore(true)
+                              setStatusOk(true)
+                              setStatus(
+                                probe.ready
+                                  ? `Agent v${probe.status.agent?.version} reports BerryCore installed.`
+                                  : 'BerryCore installed — agent will be available after install.sh completes.'
+                              )
+                            } else {
+                              setStatusOk(false)
+                              setStatus(
+                                probe.ready
+                                  ? 'Agent is running but BerryCore is not installed yet.'
+                                  : 'Agent not detected — run install.sh in Term49 first.'
+                              )
+                            }
+                          } finally {
+                            setPipelineBusy(false)
+                          }
+                        }}
+                      >
+                        Check agent status
+                      </button>
+                    </div>
                     <label className="qs-setup-confirm install-phone-confirm" style={{ marginTop: 16 }}>
                       <input
                         type="checkbox"
@@ -710,6 +768,11 @@ export function InstallationWizard({
                       />
                       <span>I ran the installer in Term49</span>
                     </label>
+                  </div>
+                )}
+                {(statusOk || berryCoreUploaded) && berryCoreViaAgent && (
+                  <div className="alert alert-ok" style={{ marginTop: 12 }}>
+                    BerryCore was installed by the Berry Bridge agent — no Term49 paste needed.
                   </div>
                 )}
               </>
@@ -727,10 +790,9 @@ export function InstallationWizard({
             ) : (
               <>
                 <p className="panel-desc">
-                  Berry Bridge uploads your key over WiFi Storage. You must run the Term49 script on
-                  the phone — it runs <code className="code-inline">ssh-keygen</code> on the device
-                  and starts <code className="code-inline">sshd</code>. authorized_keys alone is not
-                  enough.
+                  Berry Bridge uploads your key over WiFi Storage. When the Berry Bridge agent is
+                  installed (via BerryCore install.sh), SSH setup runs automatically — otherwise use
+                  the Term49 script fallback.
                 </p>
                 <div className="btn-row">
                   <button
@@ -762,7 +824,7 @@ export function InstallationWizard({
                   )}
                 </div>
                 {statusOk === false && statusAlert}
-                {sshKeyUploaded && !sshOk && (
+                {sshKeyUploaded && !sshOk && !sshViaAgent && (
                   <div ref={sshStepsRef}>
                     <Term49SshKeyInstallGuide
                       pubFile={pubKeyFileName(selectedKey || newKeyName)}

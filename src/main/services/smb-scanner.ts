@@ -1,6 +1,7 @@
 import { SMB_DEFAULTS, type DeviceProfile, type SmbHost } from '@shared/types'
 import { detectSubnets, generateIpRange, probePort } from './network-utils'
 import { Bb10SmbClient, SmbSessionPool } from './bb10-smb-client'
+import { ensureSmbMediaPreview } from './smb-preview-cache'
 import { bundledSambaDir } from './smb-tool-paths'
 import { discoverSmbAccess } from './smb-upload-target'
 
@@ -64,6 +65,30 @@ export class SmbScanner {
     this.sessions.close(sessionId)
   }
 
+  previewMedia(sessionId: string, remotePath: string, expectedSize = 0) {
+    const session = this.sessions.getSession(sessionId)
+    if (!session) {
+      return Promise.reject(new Error('SMB session expired — reconnect'))
+    }
+
+    return ensureSmbMediaPreview(
+      (localPath, timeoutMs) =>
+        this.client.downloadFile(
+          session.host,
+          session.share,
+          session.password,
+          remotePath,
+          localPath,
+          session.username,
+          timeoutMs
+        ),
+      session.host,
+      session.share,
+      remotePath,
+      expectedSize
+    )
+  }
+
   listShares(host: string, password: string, username?: string) {
     return this.client.listShares(host, password, username)
   }
@@ -84,9 +109,18 @@ export class SmbScanner {
     password: string,
     remotePath: string,
     localPath: string,
-    username?: string
+    username?: string,
+    timeoutMs?: number
   ) {
-    return this.client.downloadFile(host, share, password, remotePath, localPath, username)
+    return this.client.downloadFile(
+      host,
+      share,
+      password,
+      remotePath,
+      localPath,
+      username,
+      timeoutMs
+    )
   }
 
   uploadFile(

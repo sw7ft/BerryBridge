@@ -94,6 +94,15 @@ export interface SmbFileEntry {
   modified?: string
 }
 
+export interface SmbMediaPreview {
+  url: string
+  kind: 'image' | 'video'
+  mimeType: string
+  name: string
+  size: number
+  cached: boolean
+}
+
 export interface SmbShareInfo {
   name: string
   type: string
@@ -130,7 +139,7 @@ export interface DeviceScanProgress {
 }
 
 export interface BerryCoreUploadProgress {
-  phase: 'connecting' | 'uploading' | 'done' | 'error'
+  phase: 'connecting' | 'uploading' | 'agent-polling' | 'agent-running' | 'done' | 'error'
   message: string
   file?: string
   fileIndex?: number
@@ -138,6 +147,42 @@ export interface BerryCoreUploadProgress {
   percent?: number
   /** Pulse animation while a large file is in flight (no byte-level SMB progress). */
   indeterminate?: boolean
+}
+
+export interface BerryBridgeAgentStatus {
+  schema?: string
+  updated_at?: string
+  agent?: {
+    version?: string
+    state?: string
+    last_job_id?: string
+    last_error?: string | null
+  }
+  berrycore?: {
+    installed?: boolean
+    path?: string
+    version?: string
+  }
+  ssh?: {
+    sshd_running?: boolean
+    port?: number
+    user?: string
+    ready_for_bridge?: boolean
+  }
+  last_job?: {
+    id?: string
+    type?: string
+    state?: string
+    message?: string
+    exit_code?: number
+  }
+}
+
+export interface BerryCoreDeviceUploadResult {
+  ok: boolean
+  message: string
+  method?: 'agent' | 'term49'
+  berrycoreInstalled?: boolean
 }
 
 export interface BerryCoreReleaseAsset {

@@ -1,5 +1,13 @@
 # Berry Bridge — release checklist
 
+## v0.1.7 — Storage photo preview & Berry Bridge agent
+
+- **WiFi Storage photo/video preview** — browse camera folders, click to preview; BB10 SMB listing parser fixed for camera files
+- **Berry Bridge agent (v0.1.0)** — bundled `berrybridge-agent-bb10-0.1.0.tgz`; install wizard uploads agent, polls `status.json`, automates SSH setup when agent is running
+- **Install wizard** — agent status check, Term49 fallback when agent not yet installed
+
+Tag **`v0.1.7`** to trigger [`.github/workflows/release.yml`](../.github/workflows/release.yml).
+
 ## v0.1.6 — App Store GitHub repos
 
 Add your own public GitHub repos to the App Store. Berry Bridge scans for **`.bar`** and **`.apk`** files, with separate tabs for each type. Packages download from GitHub on install and are cached locally.

@@ -6,6 +6,7 @@ import { tmpdir } from 'os'
 import { app } from 'electron'
 import { randomUUID } from 'crypto'
 import { SMB_DEFAULTS, SMB_PATHS, type SmbFileEntry, type SmbShareInfo } from '@shared/types'
+import { parseDirListing } from '@shared/smb-dir-parser'
 import {
   bundledSambaDir,
   resolveBundledSmbclient,
@@ -111,6 +112,13 @@ export class SmbSessionPool {
     this.meta.delete(sessionId)
   }
 
+  getSession(sessionId: string): SessionMeta | undefined {
+    const m = this.meta.get(sessionId)
+    if (!m) return undefined
+    m.lastUsed = Date.now()
+    return m
+  }
+
   closeAll(): void {
     this.meta.clear()
   }
@@ -180,9 +188,16 @@ export class Bb10SmbClient {
     path = '',
     username = SMB_DEFAULTS.username
   ): Promise<SmbFileEntry[]> {
-    const cmd = path ? `cd "${path.replace(/"/g, '')}"; ls` : 'ls'
-    const output = await this.runOnce(host, share, username, password, cmd)
-    return parseDirListing(output)
+    const cd = path ? `cd "${path.replace(/"/g, '')}"; ` : ''
+    let output = await this.runOnce(host, share, username, password, `${cd}ls`)
+    let entries = parseDirListing(output)
+
+    if (entries.length === 0 && looksLikeUnparsedListing(output)) {
+      output = await this.runOnce(host, share, username, password, `${cd}dir`)
+      entries = parseDirListing(output)
+    }
+
+    return entries
   }
 
   async downloadFile(
@@ -191,10 +206,21 @@ export class Bb10SmbClient {
     password: string,
     remotePath: string,
     localPath: string,
-    username = SMB_DEFAULTS.username
+    username = SMB_DEFAULTS.username,
+    timeoutMs = SMB_COMMAND_MS
   ): Promise<void> {
-    const cmd = `get "${remotePath.replace(/"/g, '')}" "${localPath.replace(/"/g, '')}"`
-    await this.runOnce(host, share, username, password, cmd)
+    const normalized = remotePath.replace(/\\/g, '/').replace(/^\/+/, '')
+    const parts = normalized.split('/').filter(Boolean)
+    const file = parts.pop() || normalized
+    const dir = parts.join('/')
+    const quotedLocal = localPath.replace(/"/g, '')
+    const quotedFile = file.replace(/"/g, '')
+
+    const cmd = dir
+      ? `cd "${dir.replace(/"/g, '')}"; get "${quotedFile}" "${quotedLocal}"`
+      : `get "${quotedFile}" "${quotedLocal}"`
+
+    await this.runOnce(host, share, username, password, cmd, false, timeoutMs)
   }
 
   async uploadFile(
@@ -418,23 +444,8 @@ function parseShareList(output: string): SmbShareInfo[] {
   return shares
 }
 
-function parseDirListing(output: string): SmbFileEntry[] {
-  const entries: SmbFileEntry[] = []
-  for (const line of output.split('\n')) {
-    const match = line.match(/^\s{2}([^\s].*?)\s{2,}([DAH]+)\s+(\d+)\s+(.+)$/)
-    if (!match) continue
-    const [, rawName, flags, sizeStr] = match
-    const name = rawName.trim()
-    if (name === '.' || name === '..') continue
-    entries.push({
-      name,
-      isDirectory: flags.includes('D'),
-      size: parseInt(sizeStr, 10) || 0,
-      modified: match[4]?.trim()
-    })
-  }
-  return entries.sort((a, b) => {
-    if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1
-    return a.name.localeCompare(b.name)
-  })
+function looksLikeUnparsedListing(output: string): boolean {
+  return output
+    .split('\n')
+    .some((line) => /^\s{2}\S/.test(line.replace(/\r$/, '')) && !/^\s{2}\.\.?(\s|$)/.test(line))
 }
