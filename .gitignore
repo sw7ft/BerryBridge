@@ -8,3 +8,4 @@ resources/samba/**/*
 .DS_Store
 .env
 .env.*
+berrybridge-agent-bb10-0.1.0.tgz
