@@ -1,5 +1,0 @@
-{
-  "presence_url": "https://rdp-manager.sw7ft.com/api/presence",
-  "my_ip_url": "https://rdp-manager.sw7ft.com/api/my-ip",
-  "heartbeat_seconds": 300
-}

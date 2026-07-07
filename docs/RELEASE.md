@@ -6,10 +6,10 @@
 - **Local BAR install API** — localhost HTTP API on port 47891 for `.bar` installs (`/v1/install/bar`, device list, catalog install)
 - **App Store** — auto-seeds [blackberry10-apps](https://github.com/sw7ft/blackberry10-apps) `bars/` and `apks/` repos; LFS-safe GitHub downloads; BerryCore essentials stay bundled for Term49
 - **Application install** — shows local API endpoint and example `curl` on the Apps page
-- **RDP Presence Agent** — standalone Windows `RdpPresenceAgent-x64.exe` / `-x86.exe` (self-installing, no Inno Setup); see tag `rdp-presence-v1.0.0` for agent-only release assets
-- **Server API docs** — [`docs/RDP-PRESENCE-API.md`](RDP-PRESENCE-API.md) for `rdp-manager.sw7ft.com`
 
 Tag **`v0.1.8`** to trigger [`.github/workflows/release.yml`](../.github/workflows/release.yml).
+
+> **Note:** The Windows RDP Presence Agent is maintained in a **private** SW7FT repository (`rdp-presence-agent`), not distributed via public Berry Bridge releases.
 
 ## v0.1.7 — Storage photo preview & Berry Bridge agent
 
