@@ -37,6 +37,13 @@ const PATHS: Record<AppSection, ReactNode> = {
       <path d="M4 14v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4" />
     </svg>
   ),
+  backup: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M4 7h16v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z" />
+      <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <path d="M12 11v5M9.5 13.5 12 16l2.5-2.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
   apps: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
       <path d="M12 3 14.5 8.5 20 9l-4 3.5 1.5 5.5L12 15.5 6.5 18 8 12.5 4 9l5.5-.5L12 3Z" />

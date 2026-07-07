@@ -16,6 +16,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'quickstart', label: 'Install', tier: 'simple' },
   { id: 'devices', label: 'Devices', tier: 'simple' },
   { id: 'smb', label: 'Storage', tier: 'simple' },
+  { id: 'backup', label: 'Backup', tier: 'simple' },
   { id: 'terminal', label: 'Terminal', tier: 'simple' },
   { id: 'store', label: 'App Store', tier: 'simple' },
   { id: 'ssh', label: 'SSH Keys', tier: 'advanced' },

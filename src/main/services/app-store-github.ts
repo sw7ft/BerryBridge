@@ -90,7 +90,10 @@ async function resolveBranch(owner: string, repo: string, branch: string): Promi
   return info.default_branch
 }
 
-export async function scanGitHubRepo(parsed: ParsedGitHubRepo): Promise<{
+export async function scanGitHubRepo(
+  parsed: ParsedGitHubRepo,
+  options?: { packageType?: 'bar' | 'apk' }
+): Promise<{
   branch: string
   packages: GitHubPackageFile[]
 }> {
@@ -109,14 +112,16 @@ export async function scanGitHubRepo(parsed: ParsedGitHubRepo): Promise<{
     if (prefix && !node.path.startsWith(prefix)) continue
     const lower = node.path.toLowerCase()
     if (!lower.endsWith('.bar') && !lower.endsWith('.apk')) continue
+    const type: 'bar' | 'apk' = lower.endsWith('.apk') ? 'apk' : 'bar'
+    if (options?.packageType && type !== options.packageType) continue
 
     const name = node.path.split('/').pop() || node.path
     packages.push({
       path: node.path,
       name: name.replace(/\.(bar|apk)$/i, ''),
-      type: lower.endsWith('.apk') ? 'apk' : 'bar',
+      type,
       size: node.size || 0,
-      downloadUrl: `https://raw.githubusercontent.com/${parsed.owner}/${parsed.repo}/${branch}/${node.path}`
+      downloadUrl: `https://github.com/${parsed.owner}/${parsed.repo}/raw/${branch}/${node.path}`
     })
   }
 

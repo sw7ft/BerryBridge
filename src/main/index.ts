@@ -8,10 +8,14 @@ import { DeviceScanner } from './services/device-scanner'
 import { BerryCoreFeed } from './services/berrycore-feed'
 import { BerryCoreSetupService } from './services/berrycore-setup'
 import { BerryBridgeAgentService } from './services/berrybridge-agent-service'
+import { BackupService } from './services/backup-service'
 import { Bb10AppInstaller } from './services/bb10-app-installer'
 import { Bb10ApkInstaller } from './services/bb10-apk-installer'
 import { AppStoreService } from './services/app-store-service'
+import { BarInstallApi } from './services/bar-install-api'
+import { LocalApiServer } from './services/local-api-server'
 import { TerminalManager } from './services/terminal-manager'
+import { discoverSmbAccess } from './services/smb-upload-target'
 import { detectSubnets } from './services/network-utils'
 import { registerSmbPreviewProtocol, setupSmbPreviewProtocolHandler } from './services/smb-preview-cache'
 import type { DeviceProfile } from '@shared/types'
@@ -23,9 +27,12 @@ const agentService = new BerryBridgeAgentService(smbScanner)
 const deviceScanner = new DeviceScanner()
 const berryCoreFeed = new BerryCoreFeed()
 const berryCoreSetup = new BerryCoreSetupService(berryCoreFeed, smbScanner, agentService)
+const backupService = new BackupService(smbScanner)
 const bb10Installer = new Bb10AppInstaller()
 const bb10ApkInstaller = new Bb10ApkInstaller(smbScanner, sshManager)
 const appStore = new AppStoreService(bb10Installer, bb10ApkInstaller)
+const barInstallApi = new BarInstallApi(store, bb10Installer, appStore)
+const localApiServer = new LocalApiServer(barInstallApi, app.getVersion())
 const terminalManager = new TerminalManager(() => mainWindow, sshManager)
 
 let mainWindow: BrowserWindow | null = null
@@ -72,6 +79,10 @@ function broadcastBerryCoreUploadProgress(
   progress: import('@shared/types').BerryCoreUploadProgress
 ): void {
   mainWindow?.webContents.send('berrycore:uploadProgress', progress)
+}
+
+function broadcastBackupProgress(progress: import('@shared/types').BackupProgress): void {
+  mainWindow?.webContents.send('backup:progress', progress)
 }
 
 async function runDeviceScan(subnet?: string) {
@@ -254,20 +265,138 @@ function registerIpc(): void {
   )
   ipcMain.handle('apps:managerInfo', () => bb10Installer.getManagerInfo())
 
+  ipcMain.handle(
+    'api:installBar',
+    async (
+      _e,
+      request: import('@shared/local-api').BarInstallRequest
+    ) => barInstallApi.installBar(request)
+  )
+  ipcMain.handle('api:info', () => localApiServer.getInfo())
+
   // App Store
-  ipcMain.handle('store:list', () => appStore.listCatalog())
+  ipcMain.handle('store:list', async () => {
+    await appStore.ensureDefaultRepos()
+    return appStore.listCatalog()
+  })
   ipcMain.handle('store:import', () => appStore.importPackage())
   ipcMain.handle('store:remove', (_e, id: string) => appStore.removeCustomPackage(id))
   ipcMain.handle('store:addRepo', (_e, input: string) => appStore.addGitHubRepo(input))
   ipcMain.handle('store:refreshRepo', (_e, repoId: string) => appStore.refreshGitHubRepo(repoId))
   ipcMain.handle('store:removeRepo', (_e, repoId: string) => appStore.removeGitHubRepo(repoId))
   ipcMain.handle('store:install', async (_e, deviceId: string, entryId: string) => {
+    await appStore.ensureDefaultRepos()
     const device = store.getDevice(deviceId)
     if (!device) return { ok: false, message: 'Device not found' }
     const entry = appStore.listCatalog().apps.find((a) => a.id === entryId)
     if (!entry) return { ok: false, message: 'Package not found in catalog' }
     return appStore.installPackage(device, entry)
   })
+
+  // Device backup (WiFi Storage / SMB)
+  ipcMain.handle('backup:listPlans', (_e, deviceId?: string) => backupService.listPlans(deviceId))
+  ipcMain.handle('backup:listRuns', (_e, deviceId?: string) => backupService.listRuns(deviceId))
+  ipcMain.handle('backup:savePlan', (_e, plan: import('@shared/types').BackupPlan) =>
+    backupService.savePlan(plan)
+  )
+  ipcMain.handle('backup:deletePlan', (_e, planId: string) => backupService.deletePlan(planId))
+  ipcMain.handle('backup:defaultRoot', (_e, deviceId: string) => {
+    const device = store.getDevice(deviceId)
+    if (!device) return null
+    return backupService.defaultBackupRoot(device)
+  })
+  ipcMain.handle('backup:chooseRoot', (_e, current?: string) => backupService.chooseBackupRoot(current))
+  ipcMain.handle(
+    'backup:resolveFolders',
+    async (
+      _e,
+      deviceId: string,
+      presetIds: string[],
+      customFolders: string[],
+      share?: string
+    ) => {
+      const device = store.getDevice(deviceId)
+      if (!device?.smbPassword) {
+        return { ok: false, message: 'WiFi Storage password required.', folders: [] as string[] }
+      }
+      const access = await discoverSmbAccess(smbScanner, device)
+      const sessionId = await smbScanner.openSession(
+        access.host,
+        share || access.share,
+        access.password,
+        access.username
+      )
+      try {
+        const presetFolders = await backupService.resolvePresetFolders(sessionId, presetIds)
+        const folders = [...presetFolders, ...customFolders.map((f) => f.trim()).filter(Boolean)]
+        return {
+          ok: true,
+          message: folders.length
+            ? `Found ${folders.length} folder(s) on ${share || access.share}.`
+            : 'No matching folders found on device.',
+          folders: [...new Set(folders)],
+          share: share || access.share
+        }
+      } finally {
+        smbScanner.closeSession(sessionId)
+      }
+    }
+  )
+  ipcMain.handle(
+    'backup:run',
+    async (
+      _e,
+      deviceId: string,
+      options: {
+        presetIds: string[]
+        customFolders: string[]
+        localRoot: string
+        share?: string
+        planId?: string
+        planName?: string
+      }
+    ) => {
+      const device = store.getDevice(deviceId)
+      if (!device) {
+        return {
+          ok: false,
+          message: 'Device not found',
+          destination: options.localRoot,
+          run: null as unknown as import('@shared/types').BackupRunRecord
+        }
+      }
+
+      const access = await discoverSmbAccess(smbScanner, device)
+      const sessionId = await smbScanner.openSession(
+        access.host,
+        options.share || access.share,
+        access.password,
+        access.username
+      )
+      let folders: string[] = []
+      try {
+        const presetFolders = await backupService.resolvePresetFolders(sessionId, options.presetIds)
+        folders = [
+          ...presetFolders,
+          ...options.customFolders.map((f) => f.trim()).filter(Boolean)
+        ]
+      } finally {
+        smbScanner.closeSession(sessionId)
+      }
+
+      return backupService.runBackup(
+        device,
+        {
+          share: options.share || access.share,
+          folders: [...new Set(folders)],
+          localRoot: options.localRoot,
+          planId: options.planId,
+          planName: options.planName
+        },
+        broadcastBackupProgress
+      )
+    }
+  )
 
   // Shell
   ipcMain.handle('shell:openExternal', (_e, url: string) => shell.openExternal(url))
@@ -296,6 +425,7 @@ app.whenReady().then(() => {
   )
 
   registerIpc()
+  localApiServer.start()
   createWindow()
 
   app.on('activate', () => {
@@ -306,4 +436,8 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   terminalManager.killAll()
   if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('will-quit', () => {
+  localApiServer.stop()
 })

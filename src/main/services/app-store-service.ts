@@ -22,11 +22,16 @@ import {
   repoLabel,
   scanGitHubRepo
 } from './app-store-github'
+import {
+  DEFAULT_APP_STORE_REPOS,
+  DEFAULT_APP_STORE_REPOS_VERSION
+} from '@shared/app-store-defaults'
 
 interface CustomStoreSchema {
   apps: AppStoreEntry[]
   repos: AppStoreRepo[]
   manifests: AppStoreRepoManifest[]
+  defaultReposVersion?: number
 }
 
 export class AppStoreService {
@@ -96,6 +101,63 @@ export class AppStoreService {
     return this.customStore.get('repos')
   }
 
+  /** Seed blackberry10-apps bars/apks repos on first launch (or after defaults bump). */
+  async ensureDefaultRepos(): Promise<void> {
+    const version = this.customStore.get('defaultReposVersion') || 0
+    if (version >= DEFAULT_APP_STORE_REPOS_VERSION) {
+      return
+    }
+
+    for (const spec of DEFAULT_APP_STORE_REPOS) {
+      const repos = this.listRepos()
+      const existing = repos.find(
+        (r) =>
+          r.owner.toLowerCase() === spec.owner.toLowerCase() &&
+          r.repo.toLowerCase() === spec.repo.toLowerCase() &&
+          r.path === spec.path
+      )
+      if (existing) {
+        await this.refreshGitHubRepo(existing.id)
+        continue
+      }
+
+      const { branch, packages } = await scanGitHubRepo(
+        {
+          owner: spec.owner,
+          repo: spec.repo,
+          branch: spec.branch,
+          path: spec.path
+        },
+        { packageType: spec.packageType }
+      )
+      if (packages.length === 0) continue
+
+      const id = randomUUID()
+      const now = new Date().toISOString()
+      const entry: AppStoreRepo = {
+        id,
+        owner: spec.owner,
+        repo: spec.repo,
+        branch,
+        path: spec.path,
+        label: spec.title,
+        htmlUrl: repoHtmlUrl(
+          { owner: spec.owner, repo: spec.repo, branch, path: spec.path },
+          branch
+        ),
+        addedAt: now,
+        lastSyncedAt: now,
+        packageType: spec.packageType,
+        builtin: true
+      }
+      repos.push(entry)
+      this.customStore.set('repos', repos)
+      this.saveManifest(id, branch, packages)
+    }
+
+    this.customStore.set('defaultReposVersion', DEFAULT_APP_STORE_REPOS_VERSION)
+  }
+
   listCatalog(): AppStoreCatalog {
     const bundledRoot = this.bundledRoot()
     const catalogPath = join(bundledRoot, 'catalog.json')
@@ -162,7 +224,7 @@ export class AppStoreService {
     }
   }
 
-  async addGitHubRepo(input: string): Promise<AppStoreRepo> {
+  async addGitHubRepo(input: string, packageType?: 'bar' | 'apk'): Promise<AppStoreRepo> {
     const parsed = parseGitHubRepoInput(input)
     if (!parsed) {
       throw new Error(
@@ -182,11 +244,10 @@ export class AppStoreService {
       return duplicate
     }
 
-    const { branch, packages } = await scanGitHubRepo(parsed)
+    const { branch, packages } = await scanGitHubRepo(parsed, { packageType })
     if (packages.length === 0) {
-      throw new Error(
-        `No .bar or .apk files found in ${repoLabel(parsed)} (branch ${branch})`
-      )
+      const typeHint = packageType ? ` (.${packageType} only)` : ''
+      throw new Error(`No .bar or .apk files found in ${repoLabel(parsed)} (branch ${branch})${typeHint}`)
     }
 
     const id = randomUUID()
@@ -200,7 +261,8 @@ export class AppStoreService {
       label: repoLabel({ ...parsed, branch }),
       htmlUrl: repoHtmlUrl({ ...parsed, branch }, branch),
       addedAt: now,
-      lastSyncedAt: now
+      lastSyncedAt: now,
+      packageType
     }
 
     repos.push(entry)
@@ -214,12 +276,15 @@ export class AppStoreService {
     const repo = repos.find((r) => r.id === repoId)
     if (!repo) throw new Error('Repo not found')
 
-    const { branch, packages } = await scanGitHubRepo({
-      owner: repo.owner,
-      repo: repo.repo,
-      branch: repo.branch,
-      path: repo.path
-    })
+    const { branch, packages } = await scanGitHubRepo(
+      {
+        owner: repo.owner,
+        repo: repo.repo,
+        branch: repo.branch,
+        path: repo.path
+      },
+      { packageType: repo.packageType }
+    )
 
     repo.branch = branch
     repo.lastSyncedAt = new Date().toISOString()
@@ -281,7 +346,8 @@ export class AppStoreService {
 
     mkdirSync(dirname(packagePath), { recursive: true })
     const res = await fetch(entry.downloadUrl, {
-      headers: { 'User-Agent': 'BerryBridge' }
+      headers: { 'User-Agent': 'BerryBridge' },
+      redirect: 'follow'
     })
     if (!res.ok) {
       throw new Error(`Download failed (HTTP ${res.status}): ${entry.githubPath}`)

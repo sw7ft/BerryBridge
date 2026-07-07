@@ -260,6 +260,10 @@ export interface AppStoreRepo {
   htmlUrl: string
   addedAt: string
   lastSyncedAt?: string
+  /** When set, only packages of this type are indexed from the repo folder. */
+  packageType?: 'bar' | 'apk'
+  /** Seeded by Berry Bridge (blackberry10-apps archive). */
+  builtin?: boolean
 }
 
 export interface AppStoreRepoManifest {
@@ -295,9 +299,64 @@ export type AppSection =
   | 'terminal'
   | 'ssh'
   | 'smb'
+  | 'backup'
   | 'apps'
   | 'store'
   | 'files'
   | 'learning'
   | 'news'
   | 'qnx'
+
+export interface BackupPlan {
+  id: string
+  deviceId: string
+  name: string
+  /** SMB share name (usually media). */
+  share: string
+  /** Remote folder paths relative to share root. */
+  folders: string[]
+  /** Absolute local backup root on this computer. */
+  localRoot: string
+  createdAt: string
+  updatedAt: string
+  lastRunAt?: string
+  lastRunOk?: boolean
+  lastRunMessage?: string
+}
+
+export interface BackupRunRecord {
+  id: string
+  deviceId: string
+  planId?: string
+  planName?: string
+  share: string
+  folders: string[]
+  destination: string
+  startedAt: string
+  finishedAt?: string
+  ok: boolean
+  message: string
+  fileCount: number
+  bytesTotal: number
+  skippedCount: number
+  errorCount: number
+}
+
+export interface BackupProgress {
+  phase: 'connecting' | 'scanning' | 'copying' | 'done' | 'error'
+  message: string
+  folder?: string
+  file?: string
+  fileIndex?: number
+  fileCount?: number
+  bytesDone?: number
+  bytesTotal?: number
+  percent?: number
+}
+
+export interface BackupRunResult {
+  ok: boolean
+  message: string
+  destination: string
+  run: BackupRunRecord
+}

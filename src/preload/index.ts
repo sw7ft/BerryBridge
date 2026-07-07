@@ -147,12 +147,69 @@ const api = {
       ipcRenderer.invoke('apps:installBar', deviceIp, barPath, devPassword),
     managerInfo: () => ipcRenderer.invoke('apps:managerInfo')
   },
+  api: {
+    info: () => ipcRenderer.invoke('api:info') as Promise<import('@shared/local-api').LocalApiInfo>,
+    installBar: (request: import('@shared/local-api').BarInstallRequest) =>
+      ipcRenderer.invoke('api:installBar', request) as Promise<import('@shared/local-api').InstallResponse>
+  },
   agent: {
     probe: (deviceId: string) =>
       ipcRenderer.invoke('agent:probe', deviceId) as Promise<{
         ready: boolean
         status: import('@shared/types').BerryBridgeAgentStatus | null
       }>
+  },
+  backup: {
+    listPlans: (deviceId?: string) =>
+      ipcRenderer.invoke('backup:listPlans', deviceId) as Promise<
+        import('@shared/types').BackupPlan[]
+      >,
+    listRuns: (deviceId?: string) =>
+      ipcRenderer.invoke('backup:listRuns', deviceId) as Promise<
+        import('@shared/types').BackupRunRecord[]
+      >,
+    savePlan: (plan: import('@shared/types').BackupPlan) =>
+      ipcRenderer.invoke('backup:savePlan', plan) as Promise<import('@shared/types').BackupPlan>,
+    deletePlan: (planId: string) =>
+      ipcRenderer.invoke('backup:deletePlan', planId) as Promise<boolean>,
+    defaultRoot: (deviceId: string) =>
+      ipcRenderer.invoke('backup:defaultRoot', deviceId) as Promise<string | null>,
+    chooseRoot: (current?: string) =>
+      ipcRenderer.invoke('backup:chooseRoot', current) as Promise<string | null>,
+    resolveFolders: (
+      deviceId: string,
+      presetIds: string[],
+      customFolders: string[],
+      share?: string
+    ) =>
+      ipcRenderer.invoke('backup:resolveFolders', deviceId, presetIds, customFolders, share) as Promise<{
+        ok: boolean
+        message: string
+        folders: string[]
+        share?: string
+      }>,
+    run: (
+      deviceId: string,
+      options: {
+        presetIds: string[]
+        customFolders: string[]
+        localRoot: string
+        share?: string
+        planId?: string
+        planName?: string
+      }
+    ) =>
+      ipcRenderer.invoke('backup:run', deviceId, options) as Promise<
+        import('@shared/types').BackupRunResult
+      >,
+    onProgress: (callback: (progress: import('@shared/types').BackupProgress) => void) => {
+      const listener = (
+        _: Electron.IpcRendererEvent,
+        progress: import('@shared/types').BackupProgress
+      ) => callback(progress)
+      ipcRenderer.on('backup:progress', listener)
+      return () => ipcRenderer.removeListener('backup:progress', listener)
+    }
   },
   shell: {
     openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),

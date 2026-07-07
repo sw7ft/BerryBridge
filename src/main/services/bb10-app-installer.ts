@@ -156,15 +156,22 @@ export class Bb10AppInstaller {
     }
   }
 
-  installBar(deviceIp: string, barPath: string, devPassword?: string): void {
+  installBar(
+    deviceIp: string,
+    barPath: string,
+    devPassword?: string
+  ): Promise<{ ok: boolean; message: string }> {
     if (!existsSync(barPath)) {
-      throw new Error(`BAR file not found: ${barPath}`)
+      return Promise.resolve({ ok: false, message: `BAR file not found: ${barPath}` })
     }
     if (devPassword) {
-      void this.installPackages(deviceIp, [barPath], devPassword)
-      return
+      return this.installPackages(deviceIp, [barPath], devPassword)
     }
     this.openAppManager(deviceIp, devPassword)
+    return Promise.resolve({
+      ok: true,
+      message: `Opened app manager for ${deviceIp}. Upload .bar files in the manager window.`
+    })
   }
 
   installPackages(

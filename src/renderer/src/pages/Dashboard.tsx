@@ -36,6 +36,11 @@ const CAPABILITIES: {
     description: 'Browse and transfer files on your device WiFi Storage shares.'
   },
   {
+    section: 'backup',
+    title: 'Backup',
+    description: 'Copy camera, documents, and other folders from the device to your computer.'
+  },
+  {
     section: 'terminal',
     title: 'SSH terminal',
     description: 'Interactive shell over OpenSSH with legacy algorithm support for BB10.'

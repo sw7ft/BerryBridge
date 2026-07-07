@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { BLACKBERRY10_APPS_URL } from '@shared/app-store-defaults'
 import type { AppStoreCatalogItem, AppStoreRepo, DeviceProfile } from '@shared/types'
 import { PageHeader } from '../components/PageHeader'
 import { Panel } from '../components/Panel'
@@ -257,7 +258,7 @@ export function AppStorePage({ devices }: Props) {
             <input
               type="text"
               className="store-repo-input"
-              placeholder="owner/repo or https://github.com/owner/repo/tree/main/bar-files"
+              placeholder="owner/repo or https://github.com/sw7ft/blackberry10-apps/tree/main/bars"
               value={repoInput}
               onChange={(e) => setRepoInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && addRepo()}
@@ -272,8 +273,11 @@ export function AppStorePage({ devices }: Props) {
             </button>
           </div>
           <p className="field-hint" style={{ marginTop: 10 }}>
-            Example:{' '}
-            <code className="code-inline">sw7ft/BerryCore/tree/main/bar-files</code>
+            Example BAR repo:{' '}
+            <code className="code-inline">sw7ft/blackberry10-apps/tree/main/bars</code>
+            {' · '}
+            APK repo:{' '}
+            <code className="code-inline">sw7ft/blackberry10-apps/tree/main/apks</code>
           </p>
         </Panel>
       )}
@@ -299,9 +303,9 @@ export function AppStorePage({ devices }: Props) {
         </div>
       )}
 
-      <Panel title={`BerryCore · ${builtin.length}`}>
+      <Panel title={`BerryCore essentials · ${builtin.length}`}>
         <p className="panel-desc">
-          Default packages from{' '}
+          Term49 and other setup packages bundled with Berry Bridge (from{' '}
           <a
             href="#"
             onClick={(e) => {
@@ -313,7 +317,17 @@ export function AppStorePage({ devices }: Props) {
           >
             BerryCore bar-files
           </a>
-          .
+          ). For recovered community apps, use the{' '}
+          <a
+            href="#"
+            onClick={(e) => {
+              e.preventDefault()
+              window.berrybridge.shell.openExternal(BLACKBERRY10_APPS_URL)
+            }}
+          >
+            BlackBerry 10 Apps
+          </a>{' '}
+          archive below.
         </p>
         {builtin.length === 0 ? (
           <div className="empty">No bundled {pkgFilter} packages in this tab.</div>
@@ -388,7 +402,7 @@ export function AppStorePage({ devices }: Props) {
         </Panel>
       ))}
 
-      {repos.length === 0 && (
+      {repos.filter((r) => !r.builtin).length === 0 && repos.some((r) => r.builtin) ? null : repos.length === 0 ? (
         <Panel title="GitHub repos">
           <p className="panel-desc">
             Add a public repo that hosts .bar or .apk files. Packages download from GitHub when you
@@ -396,7 +410,7 @@ export function AppStorePage({ devices }: Props) {
           </p>
           <div className="empty">No GitHub repos yet — click Add GitHub repo above.</div>
         </Panel>
-      )}
+      ) : null}
 
       <Panel title={`Local packages · ${custom.length}`}>
         <p className="panel-desc">Files imported from your computer — stored locally on this Mac/PC.</p>

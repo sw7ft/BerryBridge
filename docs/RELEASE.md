@@ -1,5 +1,16 @@
 # Berry Bridge — release checklist
 
+## v0.1.8 — Backup, BAR install API, blackberry10-apps archive, RDP presence agent
+
+- **Device Backup** — new Backup tab; WiFi Storage folder backup to local disk with presets and history
+- **Local BAR install API** — localhost HTTP API on port 47891 for `.bar` installs (`/v1/install/bar`, device list, catalog install)
+- **App Store** — auto-seeds [blackberry10-apps](https://github.com/sw7ft/blackberry10-apps) `bars/` and `apks/` repos; LFS-safe GitHub downloads; BerryCore essentials stay bundled for Term49
+- **Application install** — shows local API endpoint and example `curl` on the Apps page
+- **RDP Presence Agent** — standalone Windows `RdpPresenceAgent-x64.exe` / `-x86.exe` (self-installing, no Inno Setup); see tag `rdp-presence-v1.0.0` for agent-only release assets
+- **Server API docs** — [`docs/RDP-PRESENCE-API.md`](RDP-PRESENCE-API.md) for `rdp-manager.sw7ft.com`
+
+Tag **`v0.1.8`** to trigger [`.github/workflows/release.yml`](../.github/workflows/release.yml).
+
 ## v0.1.7 — Storage photo preview & Berry Bridge agent
 
 - **WiFi Storage photo/video preview** — browse camera folders, click to preview; BB10 SMB listing parser fixed for camera files

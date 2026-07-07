@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "source": "https://github.com/sw7ft/BerryCore/tree/main/bar-files",
+  "source": "https://github.com/sw7ft/BerryCore/tree/main/bar-files (BerryCore essentials only — archive apps use blackberry10-apps)",
   "apps": [
     {
       "id": "term49-all",
@@ -35,23 +35,6 @@
       "description": "Shell environment for BerryCore devices.",
       "type": "bar",
       "filename": "BGShell10.bar",
-      "author": "BerryCore"
-    },
-    {
-      "id": "term49-bridge-v212",
-      "name": "Term49 Bridge",
-      "description": "Exposes Android APIs to native BB10 apps (v2.1.2).",
-      "version": "2.1.2",
-      "type": "apk",
-      "filename": "Term49Bridge-v2.1.2-exposes-android-api.apk",
-      "author": "BerryCore"
-    },
-    {
-      "id": "term49-bridge-api",
-      "name": "Term49 Bridge API",
-      "description": "Android API bridge for Term49 integration.",
-      "type": "apk",
-      "filename": "Term49Bridge-API.apk",
       "author": "BerryCore"
     },
     {

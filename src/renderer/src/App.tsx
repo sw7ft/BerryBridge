@@ -18,6 +18,7 @@ import { DevicesPage } from './pages/Devices'
 import { TerminalPage } from './pages/Terminal'
 import { SshPage } from './pages/Ssh'
 import { SmbPage } from './pages/Smb'
+import { BackupPage } from './pages/Backup'
 import { AppsPage } from './pages/Apps'
 import { AppStorePage } from './pages/AppStore'
 import { FilesPage } from './pages/Files'
@@ -119,6 +120,8 @@ export default function App() {
         return <SshPage devices={devices} />
       case 'smb':
         return <SmbPage devices={devices} onRefresh={refreshDevices} />
+      case 'backup':
+        return <BackupPage devices={devices} />
       case 'store':
         return <AppStorePage devices={devices} />
       case 'apps':

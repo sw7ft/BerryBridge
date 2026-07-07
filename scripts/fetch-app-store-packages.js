@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Download .bar / .apk files listed in resources/app-store/catalog.json
- * from sw7ft/BerryCore bar-files (required for one-click App Store install).
+ * Download .bar / .apk files listed in resources/app-store/catalog.json.
+ * Essentials (Term49, etc.) still come from BerryCore bar-files.
+ * The main app archive is sw7ft/blackberry10-apps (seeded as GitHub repos in the App Store).
  */
 const fs = require('fs')
 const path = require('path')

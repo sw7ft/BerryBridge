@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { DeviceProfile } from '@shared/types'
+import type { LocalApiInfo } from '@shared/local-api'
 import { PageHeader } from '../components/PageHeader'
 import { Panel } from '../components/Panel'
 
@@ -10,11 +11,13 @@ interface Props {
 export function AppsPage({ devices }: Props) {
   const [selectedDevice, setSelectedDevice] = useState('')
   const [ready, setReady] = useState<boolean | null>(null)
+  const [apiInfo, setApiInfo] = useState<LocalApiInfo | null>(null)
 
   useEffect(() => {
     window.berrybridge.apps.managerInfo().then((info) => {
       setReady(info.ready === true)
     })
+    window.berrybridge.api.info().then(setApiInfo)
   }, [])
 
   const device = devices.find((d) => d.id === selectedDevice)
@@ -23,6 +26,12 @@ export function AppsPage({ devices }: Props) {
     if (!device) return
     window.berrybridge.apps.openManager(device.host, device.devModePassword)
   }
+
+  const exampleInstall = apiInfo
+    ? `curl -sS -X POST ${apiInfo.baseUrl}/v1/install/bar \\
+  -H 'Content-Type: application/json' \\
+  -d '{"deviceId":"${device?.id || '<device-id>'}","barPath":"/path/to/app.bar"}'`
+    : ''
 
   return (
     <>
@@ -62,6 +71,34 @@ export function AppsPage({ devices }: Props) {
           </button>
         </div>
       </Panel>
+
+      {apiInfo?.enabled && (
+        <Panel title="Local install API">
+          <p className="panel-desc">
+            While Berry Bridge is running, scripts and other tools on this computer can install
+            .bar files through a localhost HTTP API. Uses the same headless dev-mode installer as
+            the App Store.
+          </p>
+
+          <p className="panel-desc">
+            Base URL: <code>{apiInfo.baseUrl}</code>
+          </p>
+          {apiInfo.tokenRequired && (
+            <p className="panel-desc">
+              Auth header: <code>Authorization: Bearer &lt;BERRYBRIDGE_API_TOKEN&gt;</code>
+            </p>
+          )}
+
+          <pre className="mono">{exampleInstall}</pre>
+
+          <p className="panel-desc muted">
+            Endpoints: <code>GET /v1/health</code>, <code>GET /v1/devices</code>,{' '}
+            <code>POST /v1/install/bar</code>, <code>POST /v1/install/catalog</code>. Set{' '}
+            <code>BERRYBRIDGE_API_TOKEN</code> to require a bearer token. Set{' '}
+            <code>BERRYBRIDGE_API_ENABLED=0</code> to disable.
+          </p>
+        </Panel>
+      )}
 
       <Panel title="Before you install">
         <ol className="bb-steps bb-steps-loose">
