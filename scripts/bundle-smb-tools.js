@@ -4,7 +4,7 @@
  * Used in CI before electron-builder so WiFi Storage works without manual Samba install.
  */
 const { execSync } = require('child_process')
-const { cpSync, rmSync, mkdirSync, existsSync, readdirSync, createWriteStream, readFileSync } = require('fs')
+const { cpSync, rmSync, mkdirSync, existsSync, readdirSync, createWriteStream, readFileSync, realpathSync } = require('fs')
 const { join, dirname, basename } = require('path')
 const { platform, arch } = require('os')
 const https = require('https')
@@ -110,7 +110,7 @@ function copyBinary(src, destDir) {
 
 function resolveReal(path) {
   try {
-    return execSync(`readlink -f "${path}"`, { encoding: 'utf8' }).trim()
+    return realpathSync(path)
   } catch {
     return path
   }
@@ -136,32 +136,51 @@ function bundleDarwin() {
   const realClient = resolveReal(client)
   copyBinary(realClient, dest)
 
-  const deps = run(`otool -L "${realClient}"`).split('\n')
   const copied = new Set([basename(realClient)])
   const queue = []
 
-  for (const line of deps) {
-    const m = line.match(/^\s+(\S+)/)
-    if (!m) continue
-    const lib = m[1]
-    if (lib.startsWith('/usr/lib') || lib.startsWith('/System/')) continue
-    queue.push(lib)
+  function expandLoaderPath(value, source) {
+    return value
+      .replace(/^@loader_path(?=\/|$)/, dirname(source))
+      .replace(/^@executable_path(?=\/|$)/, dirname(realClient))
   }
 
-  while (queue.length) {
-    const lib = queue.shift()
-    const name = basename(lib)
-    if (copied.has(name) || !existsSync(lib)) continue
-    copied.add(name)
-    cpSync(lib, join(dest, name), { force: true })
-    const subDeps = run(`otool -L "${lib}"`).split('\n')
-    for (const line of subDeps) {
-      const m = line.match(/^\s+(\S+)/)
-      if (!m) continue
-      const sub = m[1]
-      if (sub.startsWith('/usr/lib') || sub.startsWith('/System/')) continue
-      if (!copied.has(basename(sub))) queue.push(sub)
+  function rpaths(source) {
+    const commands = run(`otool -l "${source}"`)
+    return [...commands.matchAll(/cmd LC_RPATH\s+cmdsize \d+\s+path (.+) \(offset \d+\)/g)]
+      .map((match) => expandLoaderPath(match[1], source))
+  }
+
+  function enqueueDependencies(source, inheritedPaths = []) {
+    const searchPaths = [...new Set([...rpaths(source), ...inheritedPaths])]
+    const deps = run(`otool -L "${source}"`).split('\n').slice(1)
+    for (const line of deps) {
+      const match = line.match(/^\s+(\S+)/)
+      if (!match) continue
+      const dependency = match[1]
+      if (dependency.startsWith('/usr/lib/') || dependency.startsWith('/System/')) continue
+      const name = basename(dependency)
+      if (copied.has(name)) continue
+      const candidates = dependency.startsWith('@rpath/')
+        ? searchPaths.map((dir) => join(dir, dependency.slice('@rpath/'.length)))
+        : [expandLoaderPath(dependency, source)]
+      const lib = candidates.find((candidate) => existsSync(candidate))
+      if (!lib) throw new Error(`Missing Samba dependency ${dependency} referenced by ${source}`)
+      queue.push({ lib, name, searchPaths })
     }
+  }
+
+  enqueueDependencies(realClient)
+  while (queue.length) {
+    const { lib, name, searchPaths } = queue.shift()
+    if (copied.has(name)) continue
+    const realLib = resolveReal(lib)
+    if (!existsSync(realLib)) throw new Error(`Missing Samba dependency ${lib}`)
+
+    copied.add(name)
+    // Keep the dependency name, but copy the file rather than a Homebrew Cellar symlink.
+    cpSync(realLib, join(dest, name), { force: true, dereference: true })
+    enqueueDependencies(realLib, searchPaths)
   }
 
   console.log(`berrybridge: bundled macOS smbclient → ${dest}`)

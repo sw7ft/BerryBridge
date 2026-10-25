@@ -94,6 +94,10 @@
       }
     ],
     "mac": {
+      "sign": "scripts/sign-macos-app.js",
+      "extendInfo": {
+        "NSLocalNetworkUsageDescription": "Berry Bridge connects to your BlackBerry over the local network for WiFi Storage and device management."
+      },
       "icon": "build/icon.icns",
       "target": [
         {

@@ -5,7 +5,8 @@ import { join, basename } from 'path'
 import { tmpdir } from 'os'
 import { app } from 'electron'
 import { randomUUID } from 'crypto'
-import { SMB_DEFAULTS, SMB_PATHS, type SmbFileEntry, type SmbShareInfo } from '@shared/types'
+import { SMB_DEFAULTS, type SmbFileEntry, type SmbShareInfo } from '@shared/types'
+import { probeDocumentsDir, remoteUploadPath } from './smb-upload-target'
 import { parseDirListing } from '@shared/smb-dir-parser'
 import {
   bundledSambaDir,
@@ -250,8 +251,10 @@ export class Bb10SmbClient {
     }
 
     const keyFileName = basename(pubPath)
-    const documentsDir = SMB_PATHS.sharedDocumentsOnMedia
-    const smbRemotePath = `${documentsDir}/${keyFileName}`
+    const documentsDir = await probeDocumentsDir(this, {
+      host, share, password, username, shares: [share]
+    })
+    const smbRemotePath = remoteUploadPath(documentsDir, keyFileName)
 
     await this.uploadFile(host, share, password, pubPath, smbRemotePath, username)
 
@@ -263,7 +266,7 @@ export class Bb10SmbClient {
         share,
         password,
         scriptLocal,
-        `${documentsDir}/${TERM49_SSH_KEY_SCRIPT}`,
+        remoteUploadPath(documentsDir, TERM49_SSH_KEY_SCRIPT),
         username
       )
     } finally {

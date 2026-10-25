@@ -13,8 +13,7 @@ export interface SmbDeviceAccess {
 const DOCUMENTS_DIR_CANDIDATES = [
   SMB_PATHS.sharedDocumentsOnMedia,
   SMB_PATHS.sharedDocuments,
-  'shared/documents',
-  ''
+  'shared/documents'
 ]
 
 export async function discoverSmbAccess(
@@ -61,8 +60,15 @@ export async function discoverSmbAccess(
   )
 }
 
-export async function probeDocumentsDir(smb: SmbScanner, access: SmbDeviceAccess): Promise<string> {
-  for (const dir of DOCUMENTS_DIR_CANDIDATES) {
+export async function probeDocumentsDir(
+  smb: Pick<SmbScanner, 'listDirectory'>,
+  access: SmbDeviceAccess
+): Promise<string> {
+  // Only a documents share maps its root to the phone's Documents directory.
+  const candidates = access.share.toLowerCase() === 'documents'
+    ? ['', ...DOCUMENTS_DIR_CANDIDATES]
+    : DOCUMENTS_DIR_CANDIDATES
+  for (const dir of candidates) {
     try {
       await smb.listDirectory(access.host, access.share, access.password, dir, access.username)
       return dir
@@ -70,7 +76,7 @@ export async function probeDocumentsDir(smb: SmbScanner, access: SmbDeviceAccess
       /* try next */
     }
   }
-  return SMB_PATHS.sharedDocumentsOnMedia
+  throw new Error(`Could not find the Documents directory on SMB share "${access.share}".`)
 }
 
 export function remoteUploadPath(remoteDir: string, fileName: string): string {

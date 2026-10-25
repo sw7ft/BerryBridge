@@ -24,10 +24,30 @@ jobs:
 
       - run: npm ci
 
+      - name: Test SMB key upload paths
+        run: node --test tests/smb-key-upload.test.cjs
+
       - name: Bundle WiFi Storage tools
         env:
           BERRYBRIDGE_FORCE_SMB_BUNDLE: '1'
         run: node scripts/bundle-smb-tools.js
+
+      - name: Validate macOS Samba bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          DIR="resources/samba/darwin-$(node -p 'process.arch')"
+
+          test -x "$DIR/smbclient"
+
+          if [ -n "$(find "$DIR" -type l -print -quit)" ]; then
+            echo "ERROR: Symlinks found in bundled Samba directory:"
+            find "$DIR" -type l -exec ls -l {} \;
+            exit 1
+          fi
+
+          echo "Samba bundle validated."
 
       - run: npm run build
 
@@ -58,6 +78,9 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      - name: Test SMB key upload paths
+        run: node --test tests/smb-key-upload.test.cjs
 
       - name: Bundle WiFi Storage tools
         env:
@@ -91,6 +114,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y smbclient
 
       - run: npm ci
+
+      - name: Test SMB key upload paths
+        run: node --test tests/smb-key-upload.test.cjs
 
       - name: Bundle WiFi Storage tools
         env:
